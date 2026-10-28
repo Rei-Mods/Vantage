@@ -1,0 +1,11 @@
+name: Feature request
+description: An idea that would make Vantage better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: What would it let you do at the table? Map examples welcome.
+    validations:
+      required: true

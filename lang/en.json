@@ -1,0 +1,146 @@
+{
+  "VANTAGE": {
+    "Title": "Vantage",
+    "ToolTitle": "Vantage (3D view)",
+    "HudTooltip": "Vantage: see from here",
+    "Settings": {
+      "wallHeight": {
+        "Name": "Wall height (ft)",
+        "Hint": "How tall sight-blocking walls are in the 3D view."
+      },
+      "doorHeight": {
+        "Name": "Door height (ft)",
+        "Hint": "How tall closed doors are in the 3D view."
+      },
+      "raiseDark": {
+        "Name": "Raise dark areas as rock",
+        "Hint": "Very dark parts of the map (black rock, out-of-bounds) become solid rock pillars and walls. Turn this off for night maps with dark floors."
+      },
+      "rockHeight": {
+        "Name": "Rock height (ft above the floor)",
+        "Hint": "How tall the rock made from dark areas is."
+      },
+      "darkThreshold": {
+        "Name": "How dark counts as rock",
+        "Hint": "Brightness from 0 to 255. Higher = more of the map becomes rock."
+      },
+      "trimColor": {
+        "Name": "Glow trim colour",
+        "Hint": "The glowing strip along the top of walls and platform edges (hex colour)."
+      },
+      "fogDistance": {
+        "Name": "Haze distance (ft)",
+        "Hint": "Smaller = foggier."
+      },
+      "bloom": {
+        "Name": "Glow (bloom)",
+        "Hint": "Bright lights and trims bleed a soft glow."
+      },
+      "snapshotWidth": {
+        "Name": "Snapshot width (px)",
+        "Hint": "Size of the picture sent with Show Players."
+      },
+      "standeeArt": {
+        "Name": "Figure pictures",
+        "Hint": "Which picture stands up as each token's figure. Portrait = the actor's upright art (best when your tokens are top-down; otherwise figures look like they lean toward you). While a token wears another form (for example a Visage transformation), the Tokenizer \".Avatar.\" twin of its image is used. Token image = the token art itself.",
+        "Choices": {
+          "portrait": "Portrait (upright art)",
+          "token": "Token image, standing (side-view token art)",
+          "tilt": "Token image, leaning back (top-down token art)"
+        }
+      },
+      "tiltDeg": {
+        "Name": "Leaning figures: angle",
+        "Hint": "How far \"leaning back\" figures tilt, in degrees. Match it to how high above the character the token art was drawn: about 30-45 for high-angle tokens, 60-70 for straight-down ones."
+      },
+      "heightMapMax": {
+        "Name": "Height maps: tallest point (ft)",
+        "Hint": "If a map image has a grey height map next to it named <map name>_height.webp (or .png / .jpg), white parts rise this many feet above the floor and black stays flat. 0 = off."
+      },
+      "playersCanOpen": {
+        "Name": "Players can open the 3D view",
+        "Hint": "Lets players open it from their own tokens. It only shows tokens they can see, but it ignores fog of war."
+      },
+      "shadows": {
+        "Name": "Shadows + corner shading",
+        "Hint": "Full = the 4 nearest lights cast shadows from walls, rock and raised areas, plus soft shading in corners. Corner shading only is lighter on slow computers.",
+        "Choices": {
+          "full": "Full",
+          "corners": "Corner shading only",
+          "off": "Off"
+        }
+      },
+      "quality": {
+        "Name": "3D view resolution",
+        "Hint": "Lower = faster on this computer.",
+        "Choices": {
+          "full": "Full",
+          "balanced": "Balanced",
+          "fast": "Fast"
+        }
+      },
+      "blurMoving": {
+        "Name": "Lower resolution while moving",
+        "Hint": "On = the picture drops to half resolution while you drag or walk the camera, so it stays smooth on slow computers (it looks slightly blurry while moving). Off = always sharp."
+      }
+    },
+    "Figures": {
+      "default": "Default (world setting)",
+      "defaultFrom": "Default (actor: {figure})",
+      "portrait": "Portrait, standing",
+      "token": "Token image, standing",
+      "tilt": "Token image, leaning back (top-down art)",
+      "flat": "Lying flat (like on the map)",
+      "none": "Don't show"
+    },
+    "Region": {
+      "Legend": "Vantage (3D view)",
+      "Height": "Height (ft)",
+      "Placeholder": "none",
+      "Hint": "Raises this area into a solid block in the 3D view: a crate, console, counter or dais (the map art stays on top). Negative = a pit. Leave empty for a normal region. Tokens inside stand on top."
+    },
+    "Token": {
+      "Legend": "Vantage 3D figure",
+      "Figure": "Figure",
+      "FigureHint": "Standing = an upright cut-out (best for side-view or full-body art). Leaning back = for top-down token art, so it doesn't look like it tips toward you. Set it on the actor's Prototype Token to change every copy.",
+      "Picture": "3D picture (optional)",
+      "PictureHint": "A different picture just for the 3D view (for example full-body art with a transparent background). Empty = automatic."
+    },
+    "Window": {
+      "Building": "Building 3D view…",
+      "Loading": "Loading 3D view…",
+      "CantStart": "Vantage can't start: {error}",
+      "WhoseEyes": "Whose eyes",
+      "WhoseEyesOption": "- whose eyes -",
+      "Eye": "Eye",
+      "EyeTitle": "Eye level",
+      "Overview": "Overview",
+      "OverviewTitle": "Overview (you are here)",
+      "ShowPlayers": "Show Players",
+      "ShowPlayersTitle": "Send this picture to every player",
+      "Live": "Live",
+      "LiveTitle": "Players' screens follow your camera live",
+      "RebuildTitle": "Rebuild from the scene (walls, levels, lights, tokens)",
+      "Help": "Drag: look · WASD: move · Q/E: down/up (Overview: turn) · Wheel: zoom · Shift: fast",
+      "Hidden": "(hidden)",
+      "TokensView": "{name}'s view"
+    },
+    "Notify": {
+      "NoScene": "Vantage: no scene is open.",
+      "GMOnly": "Vantage: only the GM can open the 3D view.",
+      "Error": "Vantage: {error}",
+      "Sent": "Vantage: sent to players.",
+      "LiveOn": "Vantage: players now follow your camera. Click Live again to stop."
+    },
+    "Scene": {
+      "Legend": "Vantage (3D view)",
+      "HeightMax": "Height map: tallest point (ft)",
+      "HeightMaxHint": "How tall the white parts of this scene's height map are. Empty = the world setting.",
+      "RaiseDark": "Raise dark areas as rock",
+      "RaiseDarkHint": "Override the world setting for this scene (handy for night maps with dark floors).",
+      "UseWorld": "World setting",
+      "On": "On",
+      "Off": "Off"
+    }
+  }
+}

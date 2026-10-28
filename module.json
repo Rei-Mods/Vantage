@@ -1,0 +1,64 @@
+{
+  "id": "vantage",
+  "title": "Vantage",
+  "description": "See any battlemap in 3D, built automatically from the scene you already have. The map art becomes the floor, walls and doors rise up, Levels become real heights, regions can become crates, daises and pits, scene lights glow and cast shadows, and tokens stand up as figures. Look through a token's eyes or orbit an overview, then show the picture to your players, live. It only draws while the camera moves, so it costs nothing when closed or idle.",
+  "version": "1.0.0",
+  "authors": [
+    {
+      "name": "Rei-Mods",
+      "url": "https://github.com/Rei-Mods"
+    }
+  ],
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/vantage.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "socket": true,
+  "url": "https://github.com/Rei-Mods/Vantage",
+  "bugs": "https://github.com/Rei-Mods/Vantage/issues",
+  "readme": "https://github.com/Rei-Mods/Vantage/blob/main/README.md",
+  "changelog": "https://github.com/Rei-Mods/Vantage/blob/main/CHANGELOG.md",
+  "license": "https://github.com/Rei-Mods/Vantage/blob/main/LICENSE",
+  "manifest": "https://github.com/Rei-Mods/Vantage/releases/latest/download/module.json",
+  "download": "https://github.com/Rei-Mods/Vantage/releases/download/v1.0.0/vantage.zip",
+  "media": [
+    {
+      "type": "cover",
+      "url": "https://raw.githubusercontent.com/Rei-Mods/Vantage/main/docs/images/hero-club.jpg"
+    },
+    {
+      "type": "screenshot",
+      "url": "https://raw.githubusercontent.com/Rei-Mods/Vantage/main/docs/images/overview-arcade.jpg"
+    },
+    {
+      "type": "screenshot",
+      "url": "https://raw.githubusercontent.com/Rei-Mods/Vantage/main/docs/images/eye-level.jpg"
+    },
+    {
+      "type": "screenshot",
+      "url": "https://raw.githubusercontent.com/Rei-Mods/Vantage/main/docs/images/raised-areas.jpg"
+    },
+    {
+      "type": "screenshot",
+      "url": "https://raw.githubusercontent.com/Rei-Mods/Vantage/main/docs/images/height-map-canyon.jpg"
+    },
+    {
+      "type": "video",
+      "url": "https://raw.githubusercontent.com/Rei-Mods/Vantage/main/media/vantage-trailer-720p.mp4",
+      "loop": false
+    }
+  ]
+}

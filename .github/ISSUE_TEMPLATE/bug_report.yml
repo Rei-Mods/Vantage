@@ -1,0 +1,36 @@
+name: Bug report
+description: Something in the 3D view looks wrong or doesn't work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead? A screenshot of the 3D view and of the same spot on the map helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we see it too?
+      placeholder: |
+        1. Open scene ...
+        2. Right-click token ... > Vantage
+        3. ...
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: "Foundry 14.x, Vantage 1.0.0, game system + version"
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser / app and graphics card
+      placeholder: "Foundry desktop app / Chrome / Edge / Firefox, GPU model"
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors (F12 > Console)
+      render: text
