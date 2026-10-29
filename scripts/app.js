@@ -1,7 +1,7 @@
 // Vantage - the GM's 3D window, the players' viewer, and snapshot/live sharing
 import {PovView} from "./view.js";
 import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf} from "./foundry.js";
-const LOOK_KEYS = ["wallSkin", "mood", "sunAz"];
+const LOOK_KEYS = ["wallSkin", "mood", "sunAz", "lightColor"];
 
 const {ApplicationV2} = foundry.applications.api;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));

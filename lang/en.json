@@ -36,6 +36,10 @@
         "Name": "Lighting mood",
         "Hint": "The light of the 3D view. Automatic keeps the light painted on the map. A mood tints it and adds a sun or moon (with shadows when Shadows is Full), its sky, haze and glow. Each scene can pick its own in Scene Config > Vantage."
       },
+      "lightColor": {
+        "Name": "Light colour",
+        "Hint": "Recolour the sun or moon, the sky and the haze (for example purple for a fey realm, red for a vampire's blood moon). Works with every mood; with Automatic it switches to the Custom colour mood. Empty = each mood's own colours. Each scene can pick its own in Scene Config > Vantage."
+      },
       "fogDistance": {
         "Name": "Haze distance (ft)",
         "Hint": "Smaller = foggier."
@@ -155,7 +159,10 @@
       "MoodHint": "The light of this scene in 3D: a sun, moon or night glow to match the map's vibe. Empty = the world setting.",
       "SunAz": "Sun direction (degrees)",
       "SunAzAuto": "the mood's own",
-      "SunAzHint": "Where the sun or moon stands, as a compass bearing: 0 = top of the map, 90 = right, 180 = bottom, 270 = left. Match the shadows painted on the map. Empty = the mood's own."
+      "SunAzHint": "Where the sun or moon stands, as a compass bearing: 0 = top of the map, 90 = right, 180 = bottom, 270 = left. Match the shadows painted on the map. Empty = the mood's own.",
+      "LightColor": "Light colour",
+      "LightColorNone": "the mood's own",
+      "LightColorHint": "Tints the sun or moon, the sky and the haze: purple for a fey realm, red for a blood moon, green for a swamp. Empty = the world setting (or the mood's own colours)."
     },
     "Skins": {
       "neon": "Neon panels (sci-fi)",
@@ -182,7 +189,20 @@
       "neon": "Neon night",
       "torch": "Torchlit (underground)",
       "toxic": "Toxic haze",
-      "blood": "Blood moon"
+      "blood": "Blood moon",
+      "fey": "Fey twilight",
+      "infernal": "Hellfire",
+      "eldritch": "Eldritch glow",
+      "frost": "Frozen dawn",
+      "storm": "Thunderstorm",
+      "desert": "Sandstorm",
+      "deep": "Under the sea",
+      "aurora": "Aurora night",
+      "holy": "Holy light",
+      "shadow": "Shadowfell",
+      "synthwave": "Synthwave sunset",
+      "alert": "Red alert",
+      "custom": "Custom colour (pick a Light colour)"
     }
   }
 }

@@ -18,6 +18,7 @@ Hooks.once("init", () => {
   const relook = () => { const w = PovWindow.instance; if (w?.view) { w.view.opts = {...w.view.opts, ...viewOptions(w.scene)}; w.requestRender(); } };
   reg("wallSkin", {type: String, default: "neon", choices: Object.fromEntries(WALL_SKINS.map(k => [k, `VANTAGE.Skins.${k}`])), onChange: relook});
   reg("mood", {type: String, default: "auto", choices: Object.fromEntries(Object.keys(MOODS).map(k => [k, `VANTAGE.Moods.${k}`])), onChange: relook});
+  reg("lightColor", {type: String, default: "", onChange: relook});
   reg("fogDistance", {type: Number, default: 250, range: {min: 40, max: 1000, step: 10}});
   reg("bloom", {type: Boolean, default: true});
   reg("snapshotWidth", {type: Number, default: 1600, range: {min: 800, max: 2560, step: 160}});
@@ -75,6 +76,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const skinSel = [opt("", L("Scene.UseWorld"), f.wallSkin), ...WALL_SKINS.map(k => opt(k, L(`Skins.${k}`), f.wallSkin))].join("");
   const moodSel = [opt("", L("Scene.UseWorld"), f.mood), ...Object.keys(MOODS).map(k => opt(k, L(`Moods.${k}`), f.mood))].join("");
   const az = Number.isFinite(Number(f.sunAz)) && f.sunAz !== "" && f.sunAz != null ? f.sunAz : "";
+  const lc = /^#[0-9a-f]{6}$/i.test(f.lightColor ?? "") ? f.lightColor : "";
   const fs = document.createElement("fieldset");
   fs.className = "vtg-scene";
   fs.innerHTML = `<legend><i class="fa-solid fa-vr-cardboard"></i> ${L("Scene.Legend")}</legend>
@@ -96,6 +98,10 @@ Hooks.on("renderSceneConfig", (app, html) => {
     <div class="form-group"><label>${L("Scene.Mood")}</label>
       <div class="form-fields"><select name="flags.${MOD}.mood">${moodSel}</select></div>
       <p class="hint">${L("Scene.MoodHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Scene.LightColor")}</label>
+      <div class="form-fields"><color-picker name="flags.${MOD}.lightColor" value="${lc}" placeholder="${escA(L("Scene.LightColorNone"))}"></color-picker></div>
+      <p class="hint">${L("Scene.LightColorHint")}</p>
     </div>
     <div class="form-group"><label>${L("Scene.SunAz")}</label>
       <div class="form-fields"><input type="number" name="flags.${MOD}.sunAz" step="5" min="0" max="360" value="${az}" placeholder="${escA(L("Scene.SunAzAuto"))}"></div>

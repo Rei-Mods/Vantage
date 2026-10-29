@@ -71,9 +71,9 @@ Set a default in the world settings, and give any scene its own skin in **Scene 
 <p align="center"><img src="docs/images/wall-skins.jpg" width="100%" alt="The same arcade corner with each of the 12 wall skins, labelled"></p>
 
 ### Lighting moods: match the map's vibe
-<p align="center"><img src="docs/images/lighting-moods.gif" width="80%" alt="A canyon base cycling through bright sun, golden hour, dusk, moonlight, neon night, toxic haze and blood moon"></p>
+<p align="center"><img src="docs/images/lighting-moods.gif" width="80%" alt="A canyon base cycling through bright sun, golden hour, synthwave sunset, moonlight, aurora night, fey twilight, blood moon, under the sea, holy light and hellfire"></p>
 
-**Automatic** keeps the light that's painted on the map. Or pick a mood for the world, or per scene in **Scene Config → Vantage**:
+**Automatic** keeps the light that's painted on the map. Or pick one of 22 moods for the world, or per scene in **Scene Config → Vantage**:
 
 | Mood | What it looks like |
 |---|---|
@@ -85,7 +85,24 @@ Set a default in the world settings, and give any scene its own skin in **Scene 
 | Neon night | Dark with a magenta haze. Scene lights and painted neon blaze |
 | Torchlit | Underground: dark and warm, the haze close in, scene lights carry the room |
 | Toxic haze | Sickly green light and thick haze |
-| Blood moon | A red moon over everything |
+| Blood moon | A red moon over everything: vampires, cursed nights |
+| Fey twilight | Violet light and a lilac sky for the fey realm |
+| Hellfire | A burning orange glow and smoke-red sky |
+| Eldritch glow | Cold teal light from something that shouldn't be there |
+| Frozen dawn | A pale low sun over ice and snow |
+| Thunderstorm | Slate-grey gloom, heavy haze, washed-out colour |
+| Sandstorm | Hot dusty light and a thick ochre haze |
+| Under the sea | Deep blue water, light falling from far above |
+| Aurora night | A green aurora under a violet sky |
+| Holy light | Radiant white-gold light, a glowing sky |
+| Shadowfell | Drained of colour, dim and grey-violet |
+| Synthwave sunset | A low magenta sun, retro pink-and-purple sky, neon that pops |
+| Red alert | Emergency red: the ship is under attack |
+| Custom colour | A moonlit look in the *Light colour* you pick |
+
+**Light colour.** Pick any colour, for the world or for one scene, and the sun or moon, the sky and the haze take it on. Use purple for a fey realm, red for a vampire's blood moon, or green for a swamp. It works on top of any mood, so *Moonlight* with red is a dim crimson night and *Golden hour* with blue is a strange alien sunset. With *Automatic* it switches to *Custom colour*.
+
+<p align="center"><img src="docs/images/light-colours.jpg" width="100%" alt="The same canyon lit in a custom purple, a custom green, and moonlight tinted red"></p>
 
 <img src="docs/images/ui-scene-look.png" align="right" width="320" alt="The Vantage fields in Foundry's Scene Config: height map, dark rock, wall skin, lighting mood and sun direction">
 
@@ -93,7 +110,7 @@ With *Shadows* on Full, the sun or moon casts real shadows from walls, raised ar
 
 <br clear="right">
 
-<p align="center"><img src="docs/images/lighting-moods.jpg" width="100%" alt="Nine moods side by side on the canyon, arcade and club maps"></p>
+<p align="center"><img src="docs/images/lighting-moods.jpg" width="100%" alt="Every mood side by side on the canyon, arcade and club maps, plus two custom light colours"></p>
 
 ### Raised areas: crates, consoles, daises and pits
 <img src="docs/images/ui-region-height.png" align="right" width="330" alt="The Vantage height field in Foundry's Region Config, set to 3">
@@ -195,6 +212,7 @@ The toolbar has **Eye** and **Overview** to switch camera, a dropdown to choose 
 | A night map whose floor is very dark | Turn *Raise dark areas as rock* off (world, or per scene). |
 | Walls that suit a fantasy, modern or wasteland map | A *Wall skin*: castle stone, brick, wood, concrete, scrap… (world, or per scene). |
 | A sunset, a night, a neon club, a torchlit dungeon | A *Lighting mood* in *Scene Config → Vantage*. Set *Sun direction* to match the map's painted shadows. |
+| A fey realm, a blood moon, an alien sky | *Fey twilight*, *Blood moon*, *Aurora night*… or a *Light colour* (purple, red, anything) on top of any mood. |
 
 ### Making a height map
 Any image editor works: paint the floor black, then paint hills and mounds in lighter greys with soft brushes, and the tallest parts white. You can also ask an image generator to convert the map. This prompt works well (attach the map):
@@ -215,7 +233,8 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 | How dark counts as rock | 26 | Brightness 0–255. Higher = more rock. |
 | Glow trim colour | `#3ce6ff` | The glowing strip along wall tops (Neon panels skin) and stair edges. |
 | Wall skin | Neon panels | What walls and doors are made of (12 materials, or Match the map). |
-| Lighting mood | Automatic | The light: the map's own, or a sun, moon or night mood. |
+| Lighting mood | Automatic | The light: the map's own, or a sun, moon, night or magical mood. |
+| Light colour | (none) | Recolours the sun or moon, sky and haze (e.g. purple fey light, a red blood moon). |
 | Haze distance (ft) | 250 | Smaller = foggier. |
 | Glow (bloom) | On | Bright lights and trims bleed a soft glow. |
 | Snapshot width (px) | 1600 | Size of the picture sent with Show Players. |
@@ -234,7 +253,7 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 ### Per scene, region and token
 | Where | Field | Flag |
 |---|---|---|
-| Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock; Wall skin; Lighting mood; Sun direction (degrees, 0 = top of the map) | `flags.vantage.heightMax`, `flags.vantage.raiseDark`, `flags.vantage.wallSkin`, `flags.vantage.mood`, `flags.vantage.sunAz` |
+| Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock; Wall skin; Lighting mood; Light colour; Sun direction (degrees, 0 = top of the map) | `flags.vantage.heightMax`, `flags.vantage.raiseDark`, `flags.vantage.wallSkin`, `flags.vantage.mood`, `flags.vantage.lightColor`, `flags.vantage.sunAz` |
 | Region Config → Placement → Vantage | Height (ft), negative = pit | `flags.vantage.raise` |
 | Token / Prototype Token Config → Appearance → Vantage 3D figure | Figure, 3D picture | `flags.vantage.figure`, `flags.vantage.standee` |
 | (token or actor flag) | Lie flat like an object | `flags.vantage.flat` |

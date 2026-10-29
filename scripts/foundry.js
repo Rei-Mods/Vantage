@@ -202,5 +202,11 @@ export function lookOf(scene = null) {
   const get = k => { try { return setting(k); } catch (e) { return undefined; } };
   const az = Number(sceneFlag(scene, "sunAz"));
   return {skin: sceneFlag(scene, "wallSkin") ?? get("wallSkin") ?? "neon", mood: sceneFlag(scene, "mood") ?? get("mood") ?? "auto",
-    sunAz: sceneFlag(scene, "sunAz") !== undefined && Number.isFinite(az) ? az : null};
+    sunAz: sceneFlag(scene, "sunAz") !== undefined && Number.isFinite(az) ? az : null,
+    tint: hexRGB(sceneFlag(scene, "lightColor") ?? get("lightColor"))};
+}
+/** "#rrggbb" -> [r, g, b] in 0..1 (null when empty or not a colour) */
+export function hexRGB(h) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(h ?? "").trim()); if (!m) return null;
+  return [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16) / 255);
 }

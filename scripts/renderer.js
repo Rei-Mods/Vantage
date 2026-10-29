@@ -488,11 +488,43 @@ export const MOODS = {
   neon:     {keep: 1.0, amb: [0.30, 0.22, 0.40], sun: [0, 0, 0], el: 60, az: 0, sky: [[0.03, 0.01, 0.06], [0.18, 0.04, 0.22]], fog: [0.14, 0.03, 0.18], fogK: 0.8, lightK: 3.0, sat: 1.2, bloom: 1.7, trimK: 1.4},
   torch:    {keep: 0.6, amb: [0.30, 0.22, 0.15], sun: [0, 0, 0], el: 60, az: 0, sky: [[0.0, 0.0, 0.0], [0.04, 0.025, 0.015]], fog: [0.05, 0.03, 0.015], fogK: 0.45, lightK: 3.0, sat: 0.95, bloom: 1.3},
   toxic:    {keep: 0.3, amb: [0.40, 0.52, 0.28], sun: [0.40, 0.55, 0.16], el: 38, az: 120, sky: [[0.12, 0.20, 0.06], [0.42, 0.55, 0.18]], fog: [0.26, 0.36, 0.12], fogK: 0.55, lightK: 1.1, sat: 0.9, bloom: 1.1},
-  blood:    {keep: 0.45, amb: [0.42, 0.15, 0.13], sun: [0.75, 0.14, 0.08], el: 30, az: 300, sky: [[0.06, 0.0, 0.0], [0.42, 0.06, 0.04]], fog: [0.22, 0.03, 0.03], fogK: 0.7, lightK: 1.3, sat: 1.0, bloom: 1.3}
+  blood:    {keep: 0.45, amb: [0.42, 0.15, 0.13], sun: [0.75, 0.14, 0.08], el: 30, az: 300, sky: [[0.06, 0.0, 0.0], [0.42, 0.06, 0.04]], fog: [0.22, 0.03, 0.03], fogK: 0.7, lightK: 1.3, sat: 1.0, bloom: 1.3},
+  fey:      {keep: 0.5, amb: [0.42, 0.32, 0.56], sun: [0.78, 0.46, 1.05], el: 22, az: 300, sky: [[0.12, 0.05, 0.26], [0.78, 0.46, 0.88]], fog: [0.36, 0.22, 0.46], fogK: 0.7, lightK: 1.4, sat: 1.15, bloom: 1.6, trimK: 1.2},
+  infernal: {keep: 0.5, amb: [0.40, 0.18, 0.10], sun: [1.20, 0.45, 0.12], el: 18, az: 200, sky: [[0.10, 0.02, 0.0], [0.80, 0.25, 0.05]], fog: [0.30, 0.08, 0.02], fogK: 0.6, lightK: 1.5, sat: 1.1, bloom: 1.6},
+  eldritch: {keep: 0.6, amb: [0.18, 0.32, 0.34], sun: [0.25, 0.75, 0.65], el: 40, az: 60, sky: [[0.0, 0.05, 0.06], [0.10, 0.35, 0.32]], fog: [0.05, 0.20, 0.20], fogK: 0.55, lightK: 1.6, sat: 0.95, bloom: 1.4},
+  frost:    {keep: 0, amb: [0.62, 0.70, 0.80], sun: [0.65, 0.75, 0.95], el: 12, az: 110, sky: [[0.35, 0.50, 0.75], [0.85, 0.88, 0.95]], fog: [0.70, 0.76, 0.86], fogK: 0.9, lightK: 0.8, sat: 0.8, bloom: 1.0},
+  storm:     {keep: 0.3, amb: [0.40, 0.44, 0.50], sun: [0, 0, 0], el: 60, az: 0, sky: [[0.10, 0.12, 0.15], [0.32, 0.36, 0.42]], fog: [0.26, 0.30, 0.35], fogK: 0.5, lightK: 1.3, sat: 0.62, bloom: 0.9},
+  desert:    {keep: 0, amb: [0.72, 0.60, 0.44], sun: [0.85, 0.66, 0.38], el: 50, az: 150, sky: [[0.62, 0.50, 0.32], [0.88, 0.72, 0.48]], fog: [0.74, 0.58, 0.38], fogK: 0.5, lightK: 0.6, sat: 0.9, bloom: 0.9},
+  deep:      {keep: 0.5, amb: [0.10, 0.28, 0.54], sun: [0.16, 0.42, 0.78], el: 78, az: 0, sky: [[0.01, 0.10, 0.30], [0.04, 0.24, 0.46]], fog: [0.02, 0.14, 0.34], fogK: 0.4, lightK: 1.6, sat: 0.9, bloom: 1.3},
+  aurora:    {keep: 0.55, amb: [0.28, 0.38, 0.36], sun: [0.32, 0.85, 0.42], el: 35, az: 20, sky: [[0.20, 0.06, 0.34], [0.22, 0.82, 0.48]], fog: [0.14, 0.26, 0.20], fogK: 0.8, lightK: 1.6, sat: 1.15, bloom: 1.5},
+  holy:      {keep: 0.2, amb: [0.84, 0.80, 0.68], sun: [0.95, 0.86, 0.56], el: 72, az: 180, sky: [[0.78, 0.74, 0.56], [1.00, 0.95, 0.80]], fog: [0.92, 0.88, 0.74], fogK: 0.8, lightK: 0.9, sat: 0.95, bloom: 1.7},
+  shadow:    {keep: 0.25, amb: [0.28, 0.27, 0.32], sun: [0.24, 0.23, 0.32], el: 40, az: 300, sky: [[0.05, 0.05, 0.07], [0.20, 0.19, 0.24]], fog: [0.16, 0.15, 0.20], fogK: 0.55, lightK: 1.2, sat: 0.35, bloom: 0.9},
+  synthwave: {keep: 0.6, amb: [0.50, 0.30, 0.50], sun: [1.15, 0.42, 0.55], el: 7, az: 270, sky: [[0.16, 0.03, 0.32], [1.00, 0.38, 0.36]], fog: [0.45, 0.16, 0.36], fogK: 0.9, lightK: 1.8, sat: 1.25, bloom: 1.7, trimK: 1.3},
+  alert:     {keep: 0.6, amb: [0.42, 0.10, 0.10], sun: [0, 0, 0], el: 60, az: 0, sky: [[0.05, 0.0, 0.0], [0.24, 0.02, 0.02]], fog: [0.18, 0.02, 0.02], fogK: 0.7, lightK: 2.2, sat: 1.1, bloom: 1.5, trimK: 1.2},
+  // "Custom colour": a neutral moonlit look that takes the scene's Light colour (purple until one is picked)
+  custom:   {keep: 0.45, amb: [0.46, 0.46, 0.46], sun: [0.62, 0.62, 0.62], el: 32, az: 135, sky: [[0.06, 0.06, 0.06], [0.42, 0.42, 0.42]], fog: [0.26, 0.26, 0.26], fogK: 0.75, lightK: 1.4, sat: 1.1, bloom: 1.4}
 };
+const CUSTOM_TINT = [0.61, 0.36, 1.0];   // #9b5cff
+const lum = c => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+/**
+ * the mood actually drawn: a Light colour (tint, [r,g,b] 0..1) recolours its sun or moon, sky and haze and leans its
+ * ambient light that way, keeping each one's brightness. With "automatic" a colour switches to the custom mood.
+ */
+export function moodOf(mood, tint = null) {
+  let M = MOODS[mood] ?? null;
+  if (!M && tint) M = MOODS.custom;
+  if (!M) return null;
+  if (!tint && M === MOODS.custom) tint = CUSTOM_TINT;
+  if (!tint) return M;
+  const L = Math.max(lum(tint), 0.12);
+  const as = (c, cap) => tint.map(t => Math.min(cap, t / L * lum(c)));
+  const mix = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+  return {...M, sun: as(M.sun, 2), amb: mix(M.amb, as(M.amb, 1), 0.5),
+    sky: [mix(M.sky[0], as(M.sky[0], 1), 0.75), mix(M.sky[1], as(M.sky[1], 1), 0.75)], fog: mix(M.fog, as(M.fog, 1), 0.7)};
+}
 /** direction toward the sun for a mood (az: compass degrees, overrides the mood's own) */
-export function sunDirection(mood, az = null) {
-  const M = MOODS[mood]; if (!M) return [0, 1, 0];
+export function sunDirection(mood, az = null, tint = null) {
+  const M = moodOf(mood, tint); if (!M) return [0, 1, 0];
   const a = (Number.isFinite(az) ? az : M.az) * Math.PI / 180, e = M.el * Math.PI / 180;
   return [Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)];
 }
@@ -617,7 +649,7 @@ export class PovRenderer {
   render(cam, lights, standees, opts = {}) {
     const gl = this.gl, w = this.canvas.width, h = this.canvas.height, W = this.world, MAX_LIGHTS = this.NL, MAX_STANDEES = this.NS;
     if (!W || !w || !h) return;
-    const M = MOODS[opts.mood] ?? null;
+    const M = moodOf(opts.mood, opts.tint ?? null);
     const sceneRT = this._rt("scene", w, h);
     const bw = Math.max(1, w >> 2), bh = Math.max(1, h >> 2);
     const b1 = this._rt("b1", bw, bh), b1t = this._rt("b1t", bw, bh);
@@ -645,7 +677,7 @@ export class PovRenderer {
       gl.uniform1i(u.uSkin ?? null, Math.max(0, WALL_SKINS.indexOf(opts.skin ?? "neon")));
       gl.uniform1f(u.uMood ?? null, M ? 1 : 0); gl.uniform1f(u.uSunShadow ?? null, (opts.shadowN ?? 4) > 0 ? 1 : 0);
       gl.uniform1f(u.uKeep ?? null, M?.keep ?? 0); gl.uniform1f(u.uLightK ?? null, M?.lightK ?? 1); gl.uniform1f(u.uSat ?? null, M?.sat ?? 1); gl.uniform1f(u.uTrimK ?? null, M?.trimK ?? 1);
-      gl.uniform3fv(u.uSunDir ?? null, sunDirection(opts.mood, opts.sunAz)); gl.uniform3fv(u.uSunCol ?? null, M?.sun ?? [0, 0, 0]);
+      gl.uniform3fv(u.uSunDir ?? null, sunDirection(opts.mood, opts.sunAz, opts.tint ?? null)); gl.uniform3fv(u.uSunCol ?? null, M?.sun ?? [0, 0, 0]);
       gl.uniform3fv(u.uAmb ?? null, M?.amb ?? [1, 1, 1]); gl.uniform3fv(u.uSkyTop ?? null, M?.sky[0] ?? [0, 0, 0]); gl.uniform3fv(u.uSkyHor ?? null, M?.sky[1] ?? [0, 0, 0]);
       gl.uniform1f(u.uCutT, opts.cutT ?? 0); gl.uniform1f(u.uCutH, opts.cutH ?? 1e9);
       const cap = opts.cap; gl.uniform4fv(u.uCap, cap ?? [0, 0, 0, 0]); gl.uniform3f(u.uCapRH, cap ? opts.capR : 0, cap ? opts.capH : 1e9, cap ? (opts.capTop ?? opts.capH) : 1e9);
