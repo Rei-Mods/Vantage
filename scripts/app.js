@@ -233,7 +233,8 @@ export class PovWindow extends ApplicationV2 {
       if (mode === "orbit") { const yaw = this.view.cam.yaw; this.view.orbitAround(t.x, t.y, t.elevation, {yaw}); this.view.selfId = t.id; }
     } else {
       const W = this.view.world;
-      this.view.orbitAround(W.W / 2, W.H / 2, W.baseElev, {yaw: -90}); this.view.cam.dist = Math.max(60, Math.min(220, W.W / W.ppf * 0.6));
+      this.view.orbitAround(W.W / 2, W.H / 2, null, {yaw: -90});   // null = the floor of the level being viewed
+      this.view.cam.dist = Math.max(60, Math.min(220, W.W / W.ppf * 0.6));
     }
     this.view.cam.mode = mode;
     this.fillTokenSelect(); this.updateButtons();
@@ -292,8 +293,8 @@ export class PovWindow extends ApplicationV2 {
         if (t) { this.pending = {tokenDoc: this.scene.tokens.get(t.id), mode: "eye"}; return this.applyPending(); }
         else { c.mode = "eye"; c.pos = [...c.target]; c.pos[1] += 3 * this.view.world.ppf; c.pitch = -6; }
       } else if (a === "orbit" && c.mode !== "orbit") {
-        const self = this.view.selfId;
-        this.view.orbitAround(c.pos[0], c.pos[2], c.pos[1] / this.view.world.ppf - 5.5, {yaw: c.yaw});
+        const self = this.view.selfId, doc = self ? this.scene.tokens.get(self) : null;
+        this.view.orbitAround(c.pos[0], c.pos[2], doc ? (doc.elevation ?? 0) : null, {yaw: c.yaw});
         this.view.selfId = self;
       } else if (a === "snap") return this.shareSnapshot();
       else if (a === "live") return this.toggleLive();
@@ -362,7 +363,7 @@ export class PovWindow extends ApplicationV2 {
     this._lastLive = now;
     const c = this.view.cam;
     emit({t: "live", from: game.user.id, sceneId: this.scene.id, viewLevel: this.viewLevel, maxBottom: this.maxBottom ?? null, title: this.title2(),
-      cam: {mode: c.mode, pos: c.pos, yaw: c.yaw, pitch: c.pitch, fov: c.fov, target: c.target, dist: c.dist, orbitPitch: c.orbitPitch}, selfId: this.view.selfId});
+      cam: {mode: c.mode, pos: c.pos, yaw: c.yaw, pitch: c.pitch, fov: c.fov, target: c.target, targetElev: c.targetElev ?? null, dist: c.dist, orbitPitch: c.orbitPitch}, selfId: this.view.selfId});
     this._phoneSnap();
   }
 

@@ -13,7 +13,7 @@ uniform int uMaxLod;
 uniform vec2 uWorld, uHRes, uRes;
 uniform float uPpf, uMaxH, uMinH, uTanX, uFogFt, uFogStart, uTime, uCutT, uCutH;
 uniform vec3 uCamPos, uCamF, uCamR, uCamU, uTrim, uFogCol;
-uniform vec4 uCap; uniform vec2 uCapRH;
+uniform vec4 uCap; uniform vec3 uCapRH;   // corridor: radius, cut height at the target, camera height
 uniform int uNL, uNS, uShadowN;
 uniform float uAO;
 uniform vec4 uLPos[${MAX_LIGHTS}], uLCol[${MAX_LIGHTS}];
@@ -24,13 +24,15 @@ float hAt(vec2 xz){
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return -1e6;
   return texture(uHeight, uv).r * uPpf;
 }
-// cutaway limit at a point: near the camera (t < uCutT) -> uCutH; inside the camera->target corridor -> uCapRH.y
+// cutaway limit at a point: near the camera (t < uCutT) -> uCutH; inside the camera->target corridor -> under the
+// sight line from the camera down to the target's floor (0.6 of its height: a margin so the target's surroundings show)
 float cutLim(vec2 xz, float t){
   float lim = t < uCutT ? uCutH : 1e9;
   if (uCapRH.x > 0.0) {
     vec2 a = uCap.xy, ab = uCap.zw - uCap.xy; float L2 = max(dot(ab, ab), 1e-6);
     float s = dot(xz - a, ab) / L2;
-    if (s < 1.0 && distance(xz, a + ab * max(s, 0.0)) < uCapRH.x) lim = min(lim, uCapRH.y);
+    if (s < 1.0 && distance(xz, a + ab * max(s, 0.0)) < uCapRH.x)
+      lim = min(lim, uCapRH.y + max(uCapRH.z - uCapRH.y, 0.0) * (1.0 - max(s, 0.0)) * 0.6);
   }
   return lim;
 }
@@ -139,7 +141,16 @@ void main(){
     vec3 N = side ? vec3(n2.x, 0.0, n2.y) : vec3(0.0, 1.0, 0.0);
     if (!side) {
       col = texture(uFloor, uv).rgb;
-      if (cut) col = vec3(0.05, 0.06, 0.08) + uTrim * 0.05;
+      if (cut) {
+        // a cut-away top: the map art, dimmed, with a thin glowing rim where the cut ends (a section view, not a black hole)
+        col = col * 0.42 + uTrim * 0.03;
+        float ce = texel * 1.5; bool rim = false;
+        for (int q = 0; q < 4; q++) {
+          vec2 off = q == 0 ? vec2(ce, 0.0) : q == 1 ? vec2(-ce, 0.0) : q == 2 ? vec2(0.0, ce) : vec2(0.0, -ce);
+          if (hAt(p.xz + off) <= cutLim(p.xz + off, t) + 0.5 * uPpf) rim = true;
+        }
+        if (rim) col = mix(col, uTrim, 0.55);
+      }
       else if (kd == 1) col = vec3(0.13, 0.15, 0.19) * (0.75 + 0.5 * vnoise(p.xz / (6.0 * uPpf)));
       else if (kd == 6) {   // gentle height-map slopes: shade by the slope so bumps read as 3D
         vec3 tn = normalize(vec3(-g.x / (2.0 * e), 1.0, -g.y / (2.0 * e)));
@@ -420,7 +431,7 @@ export class PovRenderer {
       gl.uniform3fv(u.uCamPos, cam.pos); gl.uniform3fv(u.uCamF, cam.f); gl.uniform3fv(u.uCamR, cam.r); gl.uniform3fv(u.uCamU, cam.u);
       gl.uniform3fv(u.uTrim, opts.trim ?? [0.2, 1.0, 1.1]); gl.uniform3fv(u.uFogCol, opts.fogCol ?? fogColour(opts.daylight ?? 0, W.meanCol));
       gl.uniform1f(u.uCutT, opts.cutT ?? 0); gl.uniform1f(u.uCutH, opts.cutH ?? 1e9);
-      const cap = opts.cap; gl.uniform4fv(u.uCap, cap ?? [0, 0, 0, 0]); gl.uniform2f(u.uCapRH, cap ? opts.capR : 0, cap ? opts.capH : 1e9);
+      const cap = opts.cap; gl.uniform4fv(u.uCap, cap ?? [0, 0, 0, 0]); gl.uniform3f(u.uCapRH, cap ? opts.capR : 0, cap ? opts.capH : 1e9, cap ? (opts.capTop ?? opts.capH) : 1e9);
       gl.uniform1i(u.uNL, Math.min(lights.length, MAX_LIGHTS)); gl.uniform1i(u.uNS, ns);
       gl.uniform1i(u.uShadowN, Math.max(0, Math.min(opts.shadowN ?? 4, lights.length))); gl.uniform1f(u.uAO, opts.ao ?? 1);
       if (u.uLPos) gl.uniform4fv(u.uLPos, L); if (u.uLCol) gl.uniform4fv(u.uLCol, LC);

@@ -72,10 +72,19 @@ export class PovView {
     else { const r = (tok.rotation ?? 0) * D2R; this.cam.yaw = Math.atan2(Math.cos(r), -Math.sin(r)) / D2R; }
     this.cam.pitch = -4;
   }
-  orbitAround(x, y, elevationFt, {yaw} = {}) {
+  /** the floor an overview looks at (ft): at elevation `elev` (a token's, or null = the level being viewed), whatever
+   *  stands there (stairs, raised areas, height-map slopes) - so the cutaway is measured from the floor you see */
+  groundAt(x, y, elev = null) {
+    const W = this.world;
+    const e = Number.isFinite(elev) ? elev : (W.viewElev ?? W.baseElev ?? 0);
+    return standAt(W, x, y, e) ?? e;
+  }
+  /** overview around a point; elevationFt = a token's elevation, or null for the level being viewed */
+  orbitAround(x, y, elevationFt = null, {yaw} = {}) {
     const W = this.world;
     this.cam.mode = "orbit";
-    this.cam.target = [x, (elevationFt + 3) * W.ppf, y];
+    this.cam.targetElev = Number.isFinite(elevationFt) ? elevationFt : null;
+    this.cam.target = [x, (this.groundAt(x, y, this.cam.targetElev) + 3) * W.ppf, y];
     if (yaw !== undefined) this.cam.yaw = yaw;
     this.selfId = null;
   }
@@ -105,6 +114,8 @@ export class PovView {
     t[0] += (fw[0] * dzFt + rt[0] * dxFt) * W.ppf;
     t[2] += (fw[1] * dzFt + rt[1] * dxFt) * W.ppf;
     t[1] += dyFt * W.ppf;
+    // an overview glides up and down with the floor under it (stairs, raised areas, hills)
+    if (this.cam.mode === "orbit") t[1] += ((this.groundAt(t[0], t[2], this.cam.targetElev) + 3) * W.ppf - t[1]) * 0.25;
   }
 
   // ---------------------------------------------------------------- draw
@@ -137,12 +148,15 @@ export class PovView {
     let cut = {cutT: 0, cutH: 1e9, cap: null};
     if (this.cam.mode === "orbit" && this.opts.cutaway !== false) {
       const W = this.world, tg = this.cam.target;
-      // 1) everything close to the camera is lowered to 9 ft over the target
-      // 2) a corridor from the camera to the target is cut down to just above the target's floor (Sims-style cutaway),
-      //    so rock, upper floors and walls between you and the target never hide it
+      // measured from the floor under the target (not the lowest level of the scene: on a scene with levels below,
+      // that cut the whole floor you look at away into a dark slab)
+      const gy = this.groundAt(tg[0], tg[2], this.cam.targetElev) * W.ppf;
+      // 1) close to the camera, whatever reaches up near it is lowered (to 9 ft over that floor, or 6 ft under the camera)
+      // 2) in a corridor from the camera to the target, whatever rises into the sight line is cut (Sims-style cutaway),
+      //    so rock, upper floors and walls in between never hide the target - lower near the target, none on the floor itself
       const r = Math.max(12, Math.min(30, this.cam.dist * 0.2)) * W.ppf;
-      cut = {cutT: this.cam.dist * W.ppf * 0.8, cutH: tg[1] + 9 * W.ppf,
-        cap: [v.pos[0], v.pos[2], tg[0], tg[2]], capR: r, capH: tg[1] - 2.5 * W.ppf};   // target is 3 ft over its floor
+      cut = {cutT: this.cam.dist * W.ppf * 0.8, cutH: Math.max(gy + 9 * W.ppf, v.pos[1] - 6 * W.ppf),
+        cap: [v.pos[0], v.pos[2], tg[0], tg[2]], capR: r, capH: gy + 0.5 * W.ppf, capTop: v.pos[1]};
     }
     // haze starts behind what an overview looks at, so a far-away overview isn't murky
     const fogStart = this.cam.mode === "orbit" ? this.cam.dist * 0.8 : 0;

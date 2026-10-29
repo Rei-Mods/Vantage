@@ -306,7 +306,9 @@ export async function buildWorld(data, opts = {}) {
     if (v > maxH) maxH = v; if (v < minH) minH = v;
   }
   return {W, H, ppf, gridPx: data.gridPx ?? ppf * 5, ox: data.ox, oy: data.oy, hs, hw, hh, floorCanvas: floor, heightData, heightFt, levelHeight, coverHeight,
-    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id, levelIds: new Set(set.map(l => l.id))};
+    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
+    viewElev: view?.bottom ?? baseElev,   // the floor of the level being viewed (ft): what an overview looks at
+    levelIds: new Set(set.map(l => l.id))};
 }
 
 /** box blur (two passes = a soft tent) of a float grid, radius r texels */
