@@ -1,7 +1,7 @@
 {
   "id": "vantage",
   "title": "Vantage",
-  "description": "See any battlemap in 3D, built automatically from the scene you already have. The map art becomes the floor, walls and doors rise up, Levels become real heights, regions can become crates, daises and pits, scene lights glow and cast shadows, and tokens stand up as figures. Look through a token's eyes or orbit an overview, then show the picture to your players, live. It only draws while the camera moves, so it costs nothing when closed or idle.",
+  "description": "See any battlemap in 3D, built automatically from the scene you already have, and play in it. The map art becomes the floor, walls and doors rise up, Levels become real heights, regions become crates, cabinets, bridges and pits (40 looks), scene lights glow and cast shadows, and tokens stand up as figures. Look through a token's eyes or orbit an overview; walk tokens, open doors, target, see templates and cover; add weather, time of day and animated maps; fly cutscenes and record them; show it to your players live, limited to what their tokens see. It only draws while something changes, so it costs nothing when closed or idle.",
   "version": "1.0.0",
   "authors": [
     {

@@ -21,7 +21,9 @@ A free, open-source module for [Foundry Virtual Tabletop](https://foundryvtt.com
 
 Vantage turns the scene you're already running into a 3D view you can look around in, from a token's eyes or from above. It needs no extra prep. Your map art becomes the floor, walls and doors rise up, Levels become real heights, regions can become crates, daises and pits, and scene lights glow and cast shadows. Tokens stand up as figures. Pick what the walls are made of and a lighting mood (a low sun with long shadows, moonlight, a neon night) so the 3D view fits the map's vibe. When the moment calls for it, send the picture to your players with one click, or go **Live** so their screens follow your camera.
 
-It only draws while the camera moves, so it costs nothing while the window is closed or idle.
+And you can play in it: walk tokens with a double-click, open doors, target, see spell templates and cover, watch the weather roll in and the day turn to night, fly a cutscene and record it to a video. Players see only what their tokens see.
+
+It only draws while the camera moves (or something on the map animates), so it costs nothing while the window is closed or idle.
 
 <p align="center">
   <img src="docs/images/topdown-arcade.jpg" width="49%" alt="The arcade map seen straight down, like on the Foundry canvas">
@@ -126,6 +128,8 @@ Open any **Region → Placement → Vantage (3D view) → Height (ft)**. The reg
 
 **Bridges, roofs and overhangs**: give a raised region an **Underside (ft)** below its Height and it floats: a bridge deck (Height 17, Underside 15.5), a balcony, a roof or an awning, with open space under it to walk through and see through. Tokens at its height stand on top; tokens below walk underneath. In eye view under a higher Level, that level becomes a ceiling over your head instead of disappearing.
 
+<p align="center"><img src="docs/images/bridges.jpg" width="90%" alt="A raised walkway as a solid wall, and as a bridge with the river under it"></p>
+
 **Looks like**: a top-down map has no art for the *sides* of a cabinet, so pick what the block is, and Vantage draws its front, sides and back. 40 looks: arcade cabinet, vending machine, server rack, bookshelf, wooden crate, cargo container, computer console, bar counter, shop counter, fridge, lockers, stone plinth, barrels, machinery, wardrobe / dresser, glass display case, sandbags, hay bales, neon kiosk, altar, table, bed, hearth, treasure chest, sofa, ATM, jukebox, reactor core, stacked tyres, dumpster, car, warehouse shelving, piano, market stall, planter, boulder, ice block, glowing crystals, cage / jail bars, or *the top's art carried down*. Screens, LEDs and neon glow; colours come from the art on top; a long block becomes a row of machines, each a little different. The front faces the open floor (or the side you choose). Add a **Front picture** (any image: a cabinet front, a shop sign) to put real art on the front face.
 
 <p align="center"><img src="docs/images/looks-catalogue.jpg" width="90%" alt="The 40 looks for raised areas, from arcade cabinet to jail bars"></p>
@@ -161,9 +165,13 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 - **Click a figure** to pick it (it's selected on the map too, and a double-click moves it). **Right-click** a figure to target it (Shift keeps your other targets). Targets get an orange ring.
 - A ring shows where a double-click would land.
 
+<p align="center"><img src="docs/images/play-in-3d.jpg" width="90%" alt="Walking a token by double-click, opening a door, targeting a figure"></p>
+
 ### Spell templates and cover
 - **Templates show up in 3D** as they're placed on the map: circles, cones, lines and squares tint the ground with a glowing edge, and a circle rises as a faint dome (a sphere of effect). Hidden templates stay GM-only.
 - **Cover check**: pick a token (click its figure, or look through its eyes) and target others. A line runs to each target, coloured by its cover (green none, yellow half, orange three-quarters, red full), and the window lists it ("half cover (+2 AC)"). It is worked out in 3D from the best spot in your token's square to 9 points over the target's body, so walls, low walls, crates, terrain and other creatures (half cover) all count.
+
+<p align="center"><img src="docs/images/templates-cover.jpg" width="90%" alt="A fireball dome, cone, line and square in 3D, and coloured cover lines to targets"></p>
 
 ### Weather and time of day
 - **11 kinds of weather in 3D**: rain, thunderstorm (with lightning), snow, blizzard, fog (drifting ground mist), falling ash, embers, falling leaves, fireflies, sandstorm, or clear. Drops and flakes are real 3D particles: they fall behind and in front of figures, catch the light of nearby lamps, and stop at walls.
@@ -171,6 +179,8 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 - **Stays dry where it should**: regions with a *Suppress Weather* behaviour, and everything under a higher level.
 - Rain leaves wet ground with rings in the puddles; snow whitens the ground.
 - **Time of day**: the sun/moon slider in the window bar runs from noon through golden hour and dusk to moonlight. It sets the scene's darkness (so Foundry's own lighting follows) and switches the scene to the *Day cycle* lighting mood. Foundry's darkness control drives the 3D light too.
+
+<p align="center"><img src="docs/images/weather.jpg" width="90%" alt="A canyon in a thunderstorm, in snow, and in fog at golden hour"><br><img src="docs/images/time-of-day.jpg" width="90%" alt="The time-of-day slider: noon, golden hour, dusk, moonlight"></p>
 
 ### Animated maps and lights
 - **Video maps** (`.webm` / `.mp4`) play in 3D, on every level, and walls and figures stand on the moving art.
@@ -188,11 +198,13 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 - Optionally, let players open the view from their own tokens.
 - **Players see only what their tokens see**: in Live views (and the window, if players may open it) whatever their tokens can't see right now is dark, and places they explored before stay a dim grey memory, like fog of war on the map. Show Players pictures are never limited: you choose what to send.
 
+<p align="center"><img src="docs/images/player-vision.jpg" width="90%" alt="The GM sees every room; a player sees only what their token sees"></p>
+
 ### Light on performance
 - **Nothing runs while the window is closed.** While it's open, it only draws when the camera moves or something on the map animates (at most 30 frames a second for animation).
 - Choose a resolution per computer (Full / Balanced / Fast). Optionally drop to half resolution while moving, for slower machines.
 - The last 2 built levels are remembered, so switching between tokens on different floors is instant after the first time.
-- No libraries and no build step: it's plain WebGL2 (a height-field ray-marcher) in about 2,200 lines of JavaScript.
+- No libraries and no build step: it's plain WebGL2 (a height-field ray-marcher) in about 4,000 lines of JavaScript.
 
 ## Installation
 
