@@ -1,7 +1,8 @@
 // Vantage - the GM's 3D window, the players' viewer, and snapshot/live sharing
 import {PovView} from "./view.js";
-import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf} from "./foundry.js";
-const LOOK_KEYS = ["wallSkin", "mood", "sunAz", "lightColor"];
+import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf, sceneFlag, weatherOf} from "./foundry.js";
+import {WEATHER} from "./renderer.js";
+const LOOK_KEYS = ["wallSkin", "mood", "sunAz", "lightColor", "weather"];
 
 const {ApplicationV2} = foundry.applications.api;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
@@ -97,6 +98,8 @@ export class PovWindow extends ApplicationV2 {
         <span class="vtg-sep"></span>
         ${isGM ? `<button type="button" data-a="snap" title="${L("Window.ShowPlayersTitle")}"><i class="fa-solid fa-camera"></i> ${L("Window.ShowPlayers")}</button>
         <button type="button" data-a="live" title="${L("Window.LiveTitle")}"><i class="fa-solid fa-tower-broadcast"></i> ${L("Window.Live")}</button>` : ""}
+        ${isGM ? `<label class="vtg-time" data-tooltip="${L("Window.TimeTitle")}"><i class="fa-solid fa-sun"></i><input type="range" class="vtg-dark" min="0" max="1" step="0.01" value="0"><i class="fa-solid fa-moon"></i></label>
+        <select class="vtg-weather" data-tooltip="${L("Window.WeatherTitle")}"></select>` : ""}
         <button type="button" data-a="rebuild" title="${L("Window.RebuildTitle")}"><i class="fa-solid fa-rotate"></i></button>
       </div>
       <div class="vtg-help">${L("Window.Help")}</div>
@@ -242,6 +245,18 @@ export class PovWindow extends ApplicationV2 {
     this.requestRender();
   }
 
+  /** the time slider and weather list show the scene as it is now */
+  syncLookUI() {
+    const st = this.stage; if (!st) return;
+    const dark = st.querySelector(".vtg-dark");
+    if (dark && document.activeElement !== dark) dark.value = String(lookOf(this.scene).dark ?? 0);
+    const sel = st.querySelector(".vtg-weather"); if (!sel) return;
+    const own = sceneFlag(this.scene, "weather") ?? "";
+    const follow = weatherOf({weather: this.scene.weather, flags: {fxmaster: this.scene.flags?.fxmaster}});   // what Foundry shows
+    sel.innerHTML = `<option value="">${esc(L("Weather.follow", {weather: L(`Weather.${follow}`)}))}</option>` +
+      Object.keys(WEATHER).map(k => `<option value="${k}" ${k === own ? "selected" : ""}>${esc(L(`Weather.${k}`))}</option>`).join("");
+  }
+
   updateButtons() {
     const st = this.stage;
     st.querySelector('[data-a="eye"]')?.classList.toggle("active", this.view.cam.mode === "eye");
@@ -286,6 +301,25 @@ export class PovWindow extends ApplicationV2 {
       this.pending = {tokenDoc: doc ?? null, mode: this.view.cam.mode};
       this.applyPending();
     });
+    // time of day: drag = preview in 3D (the Day cycle mood), let go = the scene's darkness (and Day cycle) for everyone
+    const dark = root.querySelector(".vtg-dark");
+    dark?.addEventListener("input", () => {
+      if (!this.view) return;
+      this.view.opts = {...this.view.opts, dark: Number(dark.value), mood: "daycycle"};
+      this.requestRender();
+    });
+    dark?.addEventListener("change", async () => {
+      const v = Number(dark.value), upd = {"environment.darknessLevel": v};
+      if (lookOf(this.scene).mood !== "daycycle") { upd[`flags.${MOD}.mood`] = "daycycle"; ui.notifications.info(L("Notify.DayCycle")); }
+      try { await this.scene.update(upd); } catch (e) { console.error(MOD, e); ui.notifications.error(L("Notify.Error", {error: e.message})); }
+    });
+    root.querySelector(".vtg-weather")?.addEventListener("change", async ev => {
+      const v = ev.target.value;
+      try { await this.scene.update({[`flags.${MOD}.weather`]: v || null}); }   // empty = follow Foundry's weather
+      catch (e) { console.error(MOD, e); ui.notifications.error(L("Notify.Error", {error: e.message})); }
+    });
+    this.syncLookUI();
+
     root.querySelector(".vtg-bar").addEventListener("click", ev => {
       const a = ev.target.closest("[data-a]")?.dataset.a; if (!a || !this.view?.world) return;
       const c = this.view.cam;
@@ -394,10 +428,14 @@ export class PovWindow extends ApplicationV2 {
       on(h, doc => { if (mine(doc)) this._rebuildSoon(); });
     // per-scene overrides (Scene Config > Vantage) changed
     on("updateScene", (doc, changes) => {
-      if (doc.id !== this.scene.id || !foundry.utils.hasProperty(changes, `flags.${MOD}`)) return;
-      // the look (skin, mood, sun) only needs a redraw; anything else rebuilds the 3D scene
-      const keys = Object.keys(foundry.utils.flattenObject(changes.flags[MOD] ?? {})).map(k => k.replace(/^-=/, ""));
-      if (this.view && keys.length && keys.every(k => LOOK_KEYS.includes(k))) { this.view.opts = {...this.view.opts, ...viewOptions(doc)}; this.requestRender(); }
+      if (doc.id !== this.scene.id) return;
+      const own = foundry.utils.hasProperty(changes, `flags.${MOD}`);
+      // darkness (time of day) and Foundry's / FXMaster's weather: a redraw
+      const env = "environment" in changes || "darkness" in changes || "weather" in changes || foundry.utils.hasProperty(changes, "flags.fxmaster");
+      if (!own && !env) return;
+      // the look (skin, mood, sun, weather) only needs a redraw; anything else rebuilds the 3D scene
+      const keys = own ? Object.keys(foundry.utils.flattenObject(changes.flags[MOD] ?? {})).map(k => k.replace(/^-=/, "").split(".")[0]) : [];
+      if (this.view && keys.every(k => LOOK_KEYS.includes(k))) { this.view.opts = {...this.view.opts, ...viewOptions(doc)}; this.syncLookUI(); this.requestRender(); }
       else this._rebuildSoon();
     });
   }
@@ -525,6 +563,13 @@ export class PovViewer extends ApplicationV2 {
       if (anim) this._tmo = setTimeout(() => { this._tmo = null; this._raf = requestAnimationFrame(frame); }, 30);   // ~30 fps while something animates
     };
     this._raf = requestAnimationFrame(frame);
+  }
+
+  /** the GM changed this scene's look, time of day or weather */
+  relook(doc) {
+    if (!this.view?.world || doc.id !== this.liveScene) return;
+    Object.assign(this.view.opts, viewOptions(doc), {showHidden: false});
+    this.applyLive(this.lastLive);
   }
 
   async refreshTokens() {

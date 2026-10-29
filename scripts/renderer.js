@@ -20,6 +20,10 @@ uniform int uSkin;                                   // wall skin (0 = neon pane
 uniform float uMood, uLightK, uSat, uSunShadow, uTrimK, uKeep;   // uKeep: how much of the map's bright (painted glowing) art stays lit   // uMood 0 = automatic (the map's own light), 1 = a lighting mood
 uniform vec3 uSunDir, uSunCol, uAmb, uSkyTop, uSkyHor;
 uniform vec4 uLPos[${MAX_LIGHTS}], uLCol[${MAX_LIGHTS}];
+// weather: uWx = kind (0 none / mist only, 1 rain, 2 snow, 3 ash, 4 embers, 5 leaves, 6 fireflies, 7 sand); uWxVel (px/s);
+// uWxP = density, streak (s), size (px), opacity; uWxQ = cell (px), wobble (px), max height over the floor (px, 0 = any), self-lit
+uniform int uWx; uniform vec3 uWxVel, uWxCol, uWxMistCol; uniform vec4 uWxP, uWxQ; uniform float uWxFlash, uWxMist, uWxGround, uWxTop;
+uniform sampler2D uShelter;   // ft: weather only falls above this (higher floors over the view, "suppress weather" regions)
 uniform vec4 uSPos[${MAX_STANDEES}], uSUV[${MAX_STANDEES}], uSInfo[${MAX_STANDEES}], uSTint[${MAX_STANDEES}], uSRing[${MAX_STANDEES}];
 
 float hAt(vec2 xz){
@@ -87,6 +91,72 @@ float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
 // smoothstep that is also defined when edge0 > edge1 (a falling edge)
 float sstep(float e0, float e1, float x){ float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
 float fbm(vec2 p){ return 0.55 * vnoise(p) + 0.3 * vnoise(p * 2.03 + 7.1) + 0.15 * vnoise(p * 4.1 + 3.3); }
+
+// ---------------------------------------------------------------- weather
+vec3 h33(vec3 p){ p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
+float shelterAt(vec2 xz){ vec2 uv = xz / uWorld; if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 1e9; return texture(uShelter, uv).r * uPpf; }
+vec3 wxPos, wxEm; float wxSum, wxOcc;
+// particles along the ray from ta to tb, one at most per cell of size cs (px), walked cell by cell (3D DDA), in the frame
+// that moves with them (so the grid stays still and nothing has to be simulated); occluded by whatever the ray hit
+vec4 wxOctave(vec3 o, vec3 d, vec3 dd, float ta, float tb, float cs, float seed, float sizeK, float aK, vec4 acc){
+  if (tb <= ta || acc.a > 0.97) return acc;
+  vec3 vel = uWxVel; float sp = length(vel);
+  vec3 sdir = sp > 1e-3 ? vel / sp : vec3(0.0, 1.0, 0.0);
+  float hl = 0.5 * sp * uWxP.y;   // half a streak (motion blur), px
+  vec3 om = o - vel * uTime;
+  vec3 P0 = om + d * ta;
+  vec3 cell = floor(P0 / cs), stp = sign(dd), tDel = abs(cs / dd);
+  vec3 tMax = ta + ((cell + max(stp, 0.0)) * cs - P0) / dd;
+  float pxK = 2.0 * uTanX / uRes.x;
+  for (int i = 0; i < 26; i++) {
+    vec3 h = h33(cell + seed);
+    if (h.x < uWxP.x) {
+      vec3 c = (cell + 0.5 + (h33(cell.zxy * 1.37 + seed + 11.0) - 0.5) * 0.5) * cs;
+      if (uWxQ.y > 0.0) c += uWxQ.y * vec3(sin(uTime * (0.7 + h.y) + h.z * 6.28), 0.6 * sin(uTime * (0.9 + h.z) + h.y * 6.28), cos(uTime * (0.8 + 0.5 * h.y) + h.x * 6.28));
+      vec3 w0 = om - c; float b = dot(d, sdir), dw = dot(d, w0), e = dot(sdir, w0);
+      float u = hl > 0.0 ? clamp(e + b * (b * e - dw) / max(1.0 - b * b, 1e-4), -hl, hl) : 0.0;
+      float s = b * u - dw;
+      float r = uWxP.z * sizeK * (0.6 + 0.8 * h.y), re = max(r, s * pxK * 0.75);
+      float dist = length(w0 + d * s - sdir * u);
+      bool glowy = uWxQ.w > 0.5;   // self-lit ones get a soft halo too
+      if (s > 0.0 && s < wxOcc && dist < (glowy ? re * 3.0 : re)) {
+        vec3 cw = c + vel * uTime;   // where it is now
+        float fl = hAt(cw.xz);
+        if (cw.y < uWxTop && cw.y > max(fl, shelterAt(cw.xz)) && (uWxQ.z <= 0.0 || cw.y < fl + uWxQ.z)) {
+          float a = ((1.0 - smoothstep(re * 0.2, re, dist)) + (glowy ? 0.35 * exp(-dist * dist / (2.0 * re * re)) : 0.0)) * (r / re) * uWxP.w * aK;
+          a *= exp(-max(s - uFogStart * uPpf, 0.0) / (uFogFt * uPpf));
+          vec3 pc = uWxCol;
+          if (uWx == 2 || uWx == 3) pc *= 0.85 + 0.3 * h.z;
+          else if (uWx == 5) { pc = mix(mix(vec3(0.72, 0.30, 0.07), vec3(0.50, 0.12, 0.05), h.z), vec3(0.85, 0.62, 0.14), step(0.68, h.y)); a *= 0.5 + 0.5 * abs(sin(uTime * 3.0 + h.x * 40.0)); }
+          if (glowy) {   // self-lit: embers flicker, fireflies blink
+            float k = uWx == 6 ? smoothstep(0.25, 0.9, 0.5 + 0.5 * sin(uTime * (0.9 + h.y) + h.z * 40.0)) : 0.55 + 0.45 * sin(uTime * 9.0 + h.y * 50.0);
+            wxEm += (1.0 - acc.a) * a * k * pc * (0.6 + 0.8 * h.z);
+            acc.a += (1.0 - acc.a) * a * 0.25;
+          } else {
+            acc.rgb += (1.0 - acc.a) * a * pc; acc.a += (1.0 - acc.a) * a;
+            wxPos += cw * a; wxSum += a;
+          }
+        }
+      }
+    }
+    float tn = min(min(tMax.x, tMax.y), tMax.z);
+    if (tn > tb || acc.a > 0.97) break;
+    if (tMax.x <= tMax.y && tMax.x <= tMax.z) { cell.x += stp.x; tMax.x += tDel.x; }
+    else if (tMax.y <= tMax.z) { cell.y += stp.y; tMax.y += tDel.y; }
+    else { cell.z += stp.z; tMax.z += tDel.z; }
+  }
+  return acc;
+}
+// ground mist: how much of the ray runs through the drifting layer a few feet over the floor
+float mistAmt(vec3 o, vec3 d, float tOcc){
+  float top = (uWxGround + 7.0) * uPpf, ta = 0.0, tb = min(tOcc, 1e7);
+  if (abs(d.y) > 1e-5) { float tm = (top - o.y) / d.y; if (o.y > top) { if (d.y >= 0.0) return 0.0; ta = tm; } else if (d.y > 0.0) tb = min(tb, tm); }
+  else if (o.y > top) return 0.0;
+  float L = min(max(tb - ta, 0.0), 400.0 * uPpf); if (L <= 0.0) return 0.0;
+  vec3 m = o + d * (ta + min(L, 60.0 * uPpf) * 0.5);
+  float n = fbm(m.xz / (22.0 * uPpf) + vec2(uTime * 0.021, uTime * 0.013));
+  return 1.0 - exp(-L / (55.0 * uPpf) * uWxMist * (0.35 + 1.3 * n));
+}
 
 // sun / moon shadow: march toward the sun over the max-height pyramid, on coarser cells as the steps grow
 float sunShadow(vec3 p){
@@ -384,6 +454,21 @@ void main(){
       acc += fall * ndl * mix(0.12, 1.0, sh) * uLCol[l].rgb;
     }
     col += (acc * (side ? 1.0 : 0.6) * max(alb, vec3(0.08)) * 2.2 + acc * 0.12) * uLightK;
+    if (uWx > 0 || uWxFlash > 0.0) {
+      float outd = p.y >= shelterAt(p.xz) - 0.5 * uPpf ? 1.0 : 0.0;   // under the open sky (not under a higher floor or a dry region)
+      if (!side && !cut && outd > 0.0) {
+        if (uWx == 1) {
+          // wet ground: darker, with rain rings spreading in puddles (faded out where a pixel covers too much floor)
+          col *= 0.8;
+          vec2 q = p.xz / (1.3 * uPpf), ci = floor(q), f = fract(q) - 0.5;
+          float hh = hash(ci), ph = fract(uTime * 1.1 + hh);
+          float rr = length(f - (vec2(hash(ci + 3.1), hash(ci + 7.7)) - 0.5) * 0.5);
+          float ring = (1.0 - smoothstep(0.0, 0.06, abs(rr - ph * 0.45))) * (1.0 - ph) * step(0.35, hh) * clamp(1.0 - pxFt * 5.0, 0.0, 1.0);
+          col += ring * (uMood > 0.5 ? uAmb + uSunCol * 0.3 : vec3(0.35)) * 0.35;
+        } else if (uWx == 2) col = mix(col, vec3(0.88, 0.90, 0.95) * (uMood > 0.5 ? max(uAmb + uSunCol * 0.5, vec3(0.3)) : vec3(0.85)), 0.2);
+      }
+      col += alb * uWxFlash * vec3(0.75, 0.8, 1.0) * (side ? 0.55 : 1.0) * mix(0.2, 1.0, outd);
+    }
     if (uMood > 0.5) col = mix(col, glowCol * uTrimK, glow);
     if (uAO > 0.0 && !cut) col *= mix(1.0, side ? aoSide(p, n2, texel) : aoFloor(p, t), uAO * 0.85);
     float fog = 1.0 - exp(-max(t - uFogStart * uPpf, 0.0) / (uFogFt * uPpf));
@@ -398,7 +483,9 @@ void main(){
     float jh = exp(-abs(d.y) * 4.0);
     col = mix(vec3(0.01, 0.02, 0.03), uFogCol * 0.55, clamp(uFogCol.b * 1.6 - 0.15, 0.0, 1.0)) + uFogCol * 0.9 * jh;
   }
+  if (!hit) col += uWxFlash * vec3(0.55, 0.6, 0.75);
   // standees, sorted far -> near on the CPU
+  float tOcc = tHit;   // what hides weather behind it: the scene, or a figure in front of it
   for (int s = 0; s < ${MAX_STANDEES}; s++) {
     if (s >= uNS) break;
     if (uSInfo[s].z > 0.5) continue;   // flat objects are drawn on the floor
@@ -427,6 +514,31 @@ void main(){
     }
     sc = mix(sc, uFogCol, 1.0 - exp(-max(ts - uFogStart * uPpf, 0.0) / (uFogFt * uPpf)));
     col = mix(col, sc, al);
+    if (al > 0.5) tOcc = min(tOcc, ts);
+  }
+  // weather: ground mist, then rain / snow / embers... lit where they fall (the mood's sky, the map's own light, lamps, lightning)
+  if (uWxMist > 0.0) col = mix(col, uWxMistCol, mistAmt(o, d, tOcc) * 0.85);
+  if (uWx > 0) {
+    wxPos = vec3(0.0); wxEm = vec3(0.0); wxSum = 0.0; wxOcc = tOcc;
+    vec3 b0 = (vec3(0.0, uMinH - 2.0 * uPpf, 0.0) - o) * inv, b1 = (vec3(uWorld.x, uWxTop, uWorld.y) - o) * inv;
+    vec3 bn = min(b0, b1), bx = max(b0, b1);
+    float tin = max(max(max(bn.x, bn.y), bn.z), 0.3 * uPpf), tout = min(min(min(bx.x, bx.y), bx.z), tOcc);
+    if (tout > tin) {
+      float cs = uWxQ.x, a1 = tin + 12.0 * cs, a2 = a1 + 30.0 * cs, a3 = a2 + 80.0 * cs;
+      // near, middle and far layers (bigger cells further out; the far ones lighter, so a distant shower doesn't hide the map)
+      vec4 wa = wxOctave(o, d, dd, tin, min(tout, a1), cs, 0.0, 1.0, 1.0, vec4(0.0));
+      wa = wxOctave(o, d, dd, a1, min(tout, a2), cs * 2.7, 17.0, 1.8, 0.7, wa);
+      wa = wxOctave(o, d, dd, a2, min(tout, a3), cs * 7.0, 41.0, 3.2, 0.45, wa);
+      vec3 lit = vec3(0.0);
+      if (wxSum > 0.0) {
+        vec3 P = wxPos / wxSum;
+        lit = uMood > 0.5 ? uAmb * 1.1 + uSunCol * 0.45 : vec3(0.16) + textureLod(uFloor, P.xz / uWorld, 5.0).rgb * 1.1;
+        vec3 la = vec3(0.0);
+        for (int l = 0; l < ${MAX_LIGHTS}; l++) { if (l >= uNL) break; float dl = length(uLPos[l].xyz - P); la += pow(clamp(1.0 - dl / uLPos[l].w, 0.0, 1.0), 2.0) * uLCol[l].w * uLCol[l].rgb; }
+        lit += min(la, vec3(1.5)) * 0.3 * uLightK + uWxFlash * vec3(0.9, 0.95, 1.1);   // lamps catch the drops
+      }
+      col = col * (1.0 - wa.a) + wa.rgb * lit + wxEm;
+    }
   }
   if (uMood > 0.5) col = max(mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, uSat), 0.0);
   outColor = vec4(col, 1.0);
@@ -501,17 +613,41 @@ export const MOODS = {
   shadow:    {keep: 0.25, amb: [0.28, 0.27, 0.32], sun: [0.24, 0.23, 0.32], el: 40, az: 300, sky: [[0.05, 0.05, 0.07], [0.20, 0.19, 0.24]], fog: [0.16, 0.15, 0.20], fogK: 0.55, lightK: 1.2, sat: 0.35, bloom: 0.9},
   synthwave: {keep: 0.6, amb: [0.50, 0.30, 0.50], sun: [1.15, 0.42, 0.55], el: 7, az: 270, sky: [[0.16, 0.03, 0.32], [1.00, 0.38, 0.36]], fog: [0.45, 0.16, 0.36], fogK: 0.9, lightK: 1.8, sat: 1.25, bloom: 1.7, trimK: 1.3},
   alert:     {keep: 0.6, amb: [0.42, 0.10, 0.10], sun: [0, 0, 0], el: 60, az: 0, sky: [[0.05, 0.0, 0.0], [0.24, 0.02, 0.02]], fog: [0.18, 0.02, 0.02], fogK: 0.7, lightK: 2.2, sat: 1.1, bloom: 1.5, trimK: 1.2},
+  // "Day cycle": follows the scene's darkness (Foundry's darkness slider or the window's time slider): noon -> golden hour ->
+  // dusk -> night under the moon
+  daycycle: {cycle: true},
   // "Custom colour": a neutral moonlit look that takes the scene's Light colour (purple until one is picked)
   custom:   {keep: 0.45, amb: [0.46, 0.46, 0.46], sun: [0.62, 0.62, 0.62], el: 32, az: 135, sky: [[0.06, 0.06, 0.06], [0.42, 0.42, 0.42]], fog: [0.26, 0.26, 0.26], fogK: 0.75, lightK: 1.4, sat: 1.1, bloom: 1.4}
 };
 const CUSTOM_TINT = [0.61, 0.36, 1.0];   // #9b5cff
+// the day cycle's stops by darkness (twilight: the sun has set, the moon is not up yet)
+const TWILIGHT = {keep: 0.45, amb: [0.30, 0.30, 0.45], sun: [0, 0, 0], el: 5, az: 275, sky: [[0.03, 0.04, 0.12], [0.30, 0.20, 0.32]], fog: [0.14, 0.12, 0.22], fogK: 0.95, lightK: 1.6, sat: 0.85, bloom: 1.3};
+const CYCLE = [[0, "noon"], [0.3, "golden"], [0.55, "dusk"], [0.72, TWILIGHT], [1, "moon"]];
+const lerpA = (a, b, k) => Array.isArray(a) ? a.map((v, i) => lerpA(v, b[i], k)) : a + (b - a) * k;
+/** the day cycle at a darkness (0 = noon, 1 = night): neighbouring stops blended; the sun or moon keeps its direction while
+ *  it fades (it does not swing across the sky) */
+export function cycleMood(dark = 0) {
+  const x = Math.max(0, Math.min(1, Number(dark) || 0));
+  let i = 0; while (i < CYCLE.length - 2 && x > CYCLE[i + 1][0]) i++;
+  const [x0, a0] = CYCLE[i], [x1, b0] = CYCLE[i + 1], k = (x - x0) / (x1 - x0 || 1);
+  const a = typeof a0 === "string" ? MOODS[a0] : a0, b = typeof b0 === "string" ? MOODS[b0] : b0;
+  const out = {};
+  for (const key of ["keep", "amb", "sun", "sky", "fog", "fogK", "lightK", "sat", "bloom"]) out[key] = lerpA(a[key], b[key], k);
+  out.trimK = lerpA(a.trimK ?? 1, b.trimK ?? 1, k);
+  const dark0 = a.sun.every(v => v === 0), dark1 = b.sun.every(v => v === 0);
+  const src = dark0 ? b : dark1 ? a : null;
+  if (src) { out.el = src.el; out.az = src.az; }
+  else { out.el = lerpA(a.el, b.el, k); let d = ((b.az - a.az + 540) % 360) - 180; out.az = (a.az + d * k + 360) % 360; }
+  return out;
+}
 const lum = c => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
 /**
  * the mood actually drawn: a Light colour (tint, [r,g,b] 0..1) recolours its sun or moon, sky and haze and leans its
  * ambient light that way, keeping each one's brightness. With "automatic" a colour switches to the custom mood.
  */
-export function moodOf(mood, tint = null) {
+export function moodOf(mood, tint = null, dark = 0) {
   let M = MOODS[mood] ?? null;
+  if (M?.cycle) M = cycleMood(dark);
   if (!M && tint) M = MOODS.custom;
   if (!M) return null;
   if (!tint && M === MOODS.custom) tint = CUSTOM_TINT;
@@ -523,10 +659,34 @@ export function moodOf(mood, tint = null) {
     sky: [mix(M.sky[0], as(M.sky[0], 1), 0.75), mix(M.sky[1], as(M.sky[1], 1), 0.75)], fog: mix(M.fog, as(M.fog, 1), 0.7)};
 }
 /** direction toward the sun for a mood (az: compass degrees, overrides the mood's own) */
-export function sunDirection(mood, az = null, tint = null) {
-  const M = moodOf(mood, tint); if (!M) return [0, 1, 0];
+export function sunDirection(mood, az = null, tint = null, dark = 0) {
+  const M = moodOf(mood, tint, dark); if (!M) return [0, 1, 0];
   const a = (Number.isFinite(az) ? az : M.az) * Math.PI / 180, e = M.el * Math.PI / 180;
   return [Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)];
+}
+
+/**
+ * weather (Scene Config > Vantage, or the scene's own Foundry weather): k = particle kind (see the shader), vel ft/s,
+ * dens = share of cells holding a particle, streak = motion blur (s), size ft, cell ft, wobble ft, low = only this many ft
+ * over the floor; fogK = haze distance x, mist = ground mist, sun / amb = how much of a mood's sun / ambient gets through
+ */
+export const WEATHER = {
+  none: null,
+  rain:      {k: 1, vel: [-3, -30, 1.5], dens: 0.55, streak: 1 / 30, size: 0.024, alpha: 0.42, col: [0.75, 0.80, 0.90], cell: 2.2, fogK: 0.75, mist: 0.15, sun: 0.55, amb: 0.9},
+  storm:     {k: 1, vel: [-10, -36, 4], dens: 0.8, streak: 1 / 30, size: 0.028, alpha: 0.5, col: [0.72, 0.78, 0.88], cell: 2.0, fogK: 0.5, mist: 0.3, sun: 0.3, amb: 0.75, lightning: true},
+  snow:      {k: 2, vel: [-1.2, -3.2, 0.6], dens: 0.55, size: 0.08, alpha: 0.9, col: [0.95, 0.96, 1.0], cell: 2.6, wobble: 0.45, fogK: 0.7, mist: 0.2, sun: 0.8, amb: 1.0},
+  blizzard:  {k: 2, vel: [-16, -5, 7], dens: 0.85, streak: 1 / 40, size: 0.07, alpha: 0.85, col: [0.93, 0.95, 1.0], cell: 2.2, wobble: 0.35, fogK: 0.3, mist: 0.6, sun: 0.5, amb: 1.0},
+  fog:       {k: 0, fogK: 0.3, mist: 1.2, sun: 0.6, amb: 1.0},
+  ash:       {k: 3, vel: [-0.8, -1.6, 0.3], dens: 0.4, size: 0.06, alpha: 0.8, col: [0.45, 0.43, 0.41], cell: 3, wobble: 0.5, fogK: 0.65, mist: 0.25, sun: 0.7, amb: 0.95},
+  embers:    {k: 4, vel: [0.8, 2.4, -0.4], dens: 0.3, size: 0.06, alpha: 1, col: [1.7, 0.55, 0.12], cell: 4, wobble: 0.7, emissive: true},
+  leaves:    {k: 5, vel: [-2.5, -2.2, 1.0], dens: 0.16, size: 0.2, alpha: 0.95, col: [0.7, 0.32, 0.08], cell: 5, wobble: 0.9},
+  fireflies: {k: 6, vel: [0, 0, 0], dens: 0.4, size: 0.08, alpha: 1, col: [1.4, 1.7, 0.45], cell: 4, wobble: 0.75, low: 8, emissive: true},
+  sand:      {k: 7, vel: [-28, -1.5, 10], dens: 0.6, streak: 1 / 32, size: 0.03, alpha: 0.35, col: [0.86, 0.70, 0.46], cell: 2.2, fogK: 0.3, mist: 0.5, mistCol: [0.78, 0.62, 0.40], sun: 0.7, amb: 1.0}
+};
+/** a mood seen through the weather: storms and fog dim the sun and grey the colours a little */
+function weathered(M, Wx) {
+  if (!M || !Wx || (Wx.sun ?? 1) === 1 && (Wx.amb ?? 1) === 1) return M;
+  return {...M, sun: M.sun.map(v => v * (Wx.sun ?? 1)), amb: M.amb.map(v => v * (Wx.amb ?? 1)), sat: M.sat * (0.85 + 0.15 * (Wx.sun ?? 1))};
 }
 
 export class PovRenderer {
@@ -611,6 +771,14 @@ export class PovRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.tex.ao = at;
+    // where weather can't fall (ft): under higher floors, in "suppress weather" regions
+    if (this.tex.shelter) gl.deleteTexture(this.tex.shelter);
+    const sh = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, sh);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, world.hw, world.hh, 0, gl.RED, gl.FLOAT, world.shelterFt ?? new Float32Array(world.hw * world.hh).fill(-1e4));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.tex.shelter = sh;
   }
 
   /** replace the floor art (a video frame or a re-composited canvas) - for animated maps */
@@ -657,7 +825,8 @@ export class PovRenderer {
   render(cam, lights, standees, opts = {}) {
     const gl = this.gl, w = this.canvas.width, h = this.canvas.height, W = this.world, MAX_LIGHTS = this.NL, MAX_STANDEES = this.NS;
     if (!W || !w || !h) return;
-    const M = moodOf(opts.mood, opts.tint ?? null);
+    const Wx = WEATHER[opts.weather] ?? null;
+    const M = weathered(moodOf(opts.mood, opts.tint ?? null, opts.dark ?? 0), Wx);
     const sceneRT = this._rt("scene", w, h);
     const bw = Math.max(1, w >> 2), bh = Math.max(1, h >> 2);
     const b1 = this._rt("b1", bw, bh), b1t = this._rt("b1t", bw, bh);
@@ -675,8 +844,8 @@ export class PovRenderer {
     this._pass(this.scene, sceneRT, w, h, u => {
       this._bindTex(0, this.tex.floor, u.uFloor); this._bindTex(1, this.tex.height, u.uHeight); this._bindTex(2, this.tex.atlas, u.uAtlas); this._bindTex(3, this.tex.max, u.uMax); this._bindTex(4, this.tex.ao, u.uAOTex); gl.uniform1i(u.uMaxLod, this.maxLod);
       gl.uniform2f(u.uWorld, W.W, W.H); gl.uniform2f(u.uHRes, W.hw, W.hh); gl.uniform2f(u.uRes, w, h);
-      gl.uniform1f(u.uTime ?? null, opts.time ?? 0); gl.uniform1f(u.uPpf, W.ppf); gl.uniform1f(u.uMaxH, W.maxH * W.ppf); gl.uniform1f(u.uMinH, W.minH * W.ppf);
-      gl.uniform1f(u.uTanX, Math.tan((cam.fov * Math.PI / 180) / 2)); gl.uniform1f(u.uFogFt, (opts.fogFt ?? 250) * (M?.fogK ?? 1)); gl.uniform1f(u.uFogStart, opts.fogStart ?? 0);
+      gl.uniform1f(u.uTime ?? null, (opts.time ?? 0) % 3600); gl.uniform1f(u.uPpf, W.ppf); gl.uniform1f(u.uMaxH, W.maxH * W.ppf); gl.uniform1f(u.uMinH, W.minH * W.ppf);
+      gl.uniform1f(u.uTanX, Math.tan((cam.fov * Math.PI / 180) / 2)); gl.uniform1f(u.uFogFt, (opts.fogFt ?? 250) * (M?.fogK ?? 1) * (Wx?.fogK ?? 1)); gl.uniform1f(u.uFogStart, opts.fogStart ?? 0);
       gl.uniform3fv(u.uCamPos, cam.pos); gl.uniform3fv(u.uCamF, cam.f); gl.uniform3fv(u.uCamR, cam.r); gl.uniform3fv(u.uCamU, cam.u);
       gl.uniform3fv(u.uTrim, opts.trim ?? [0.2, 1.0, 1.1]);
       // the mood: its haze leans a little toward the map's own average colour, so it belongs to the map
@@ -685,8 +854,23 @@ export class PovRenderer {
       gl.uniform1i(u.uSkin ?? null, Math.max(0, WALL_SKINS.indexOf(opts.skin ?? "neon")));
       gl.uniform1f(u.uMood ?? null, M ? 1 : 0); gl.uniform1f(u.uSunShadow ?? null, (opts.shadowN ?? 4) > 0 ? 1 : 0);
       gl.uniform1f(u.uKeep ?? null, M?.keep ?? 0); gl.uniform1f(u.uLightK ?? null, M?.lightK ?? 1); gl.uniform1f(u.uSat ?? null, M?.sat ?? 1); gl.uniform1f(u.uTrimK ?? null, M?.trimK ?? 1);
-      gl.uniform3fv(u.uSunDir ?? null, sunDirection(opts.mood, opts.sunAz, opts.tint ?? null)); gl.uniform3fv(u.uSunCol ?? null, M?.sun ?? [0, 0, 0]);
+      gl.uniform3fv(u.uSunDir ?? null, sunDirection(opts.mood, opts.sunAz, opts.tint ?? null, opts.dark ?? 0)); gl.uniform3fv(u.uSunCol ?? null, M?.sun ?? [0, 0, 0]);
       gl.uniform3fv(u.uAmb ?? null, M?.amb ?? [1, 1, 1]); gl.uniform3fv(u.uSkyTop ?? null, M?.sky[0] ?? [0, 0, 0]); gl.uniform3fv(u.uSkyHor ?? null, M?.sky[1] ?? [0, 0, 0]);
+      // weather (feet -> pixels)
+      const P = W.ppf, wk = Wx ? (Wx.k ?? 0) : 0;
+      this._bindTex(5, this.tex.shelter, u.uShelter);
+      gl.uniform1i(u.uWx ?? null, wk);
+      gl.uniform3fv(u.uWxVel ?? null, (Wx?.vel ?? [0, 0, 0]).map(v => v * P));
+      gl.uniform3fv(u.uWxCol ?? null, Wx?.col ?? [1, 1, 1]);
+      gl.uniform4f(u.uWxP ?? null, Wx?.dens ?? 0, Wx?.streak ?? 0, (Wx?.size ?? 0.05) * P, Wx?.alpha ?? 1);
+      gl.uniform4f(u.uWxQ ?? null, (Wx?.cell ?? 3) * P, (Wx?.wobble ?? 0) * P, (Wx?.low ?? 0) * P, Wx?.emissive ? 1 : 0);
+      gl.uniform1f(u.uWxFlash ?? null, Wx?.lightning ? (opts.flash ?? 0) : 0);
+      gl.uniform1f(u.uWxMist ?? null, Wx?.mist ?? 0);
+      const mc = Wx?.mistCol ?? fog.map(v => Math.min(1, v * 1.25 + 0.05));
+      gl.uniform3fv(u.uWxMistCol ?? null, M ? mc.map((v, i) => v * Math.min(1.2, 0.35 + (M.amb[i] + M.sun[i] * 0.5))) : mc);
+      const gr = W.viewElev ?? W.baseElev ?? 0;
+      gl.uniform1f(u.uWxGround ?? null, gr);
+      gl.uniform1f(u.uWxTop ?? null, Math.max(gr + 32, (W.maxH ?? 0) + 12) * P);
       gl.uniform1f(u.uCutT, opts.cutT ?? 0); gl.uniform1f(u.uCutH, opts.cutH ?? 1e9);
       const cap = opts.cap; gl.uniform4fv(u.uCap, cap ?? [0, 0, 0, 0]); gl.uniform3f(u.uCapRH, cap ? opts.capR : 0, cap ? opts.capH : 1e9, cap ? (opts.capTop ?? opts.capH) : 1e9);
       gl.uniform1i(u.uNL, Math.min(lights.length, MAX_LIGHTS)); gl.uniform1i(u.uNS, ns);

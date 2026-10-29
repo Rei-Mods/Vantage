@@ -56,14 +56,16 @@ export function sceneData(scene, viewLevel) {
 export function regionsOf(scene) {
   const out = [];
   for (const r of scene.regions?.contents ?? []) {
-    const stairs = !!r.behaviors?.contents?.some(b => b.type === "changeLevel" && !b.disabled);
+    const on = t => !!r.behaviors?.contents?.some(b => t.includes(b.type) && !b.disabled);
+    const stairs = on(["changeLevel"]);
+    const dry = on(["suppressWeather", "fxmaster.suppressSceneParticles"]);   // no rain or snow falls here
     const raise = Number(r.flags?.[MOD]?.raise);
     const raised = Number.isFinite(raise) && Math.abs(raise) >= 0.1;
-    if (!stairs && !raised) continue;
+    if (!stairs && !raised && !dry) continue;
     let polys = [];
     try { polys = (r.polygons ?? []).map(p => [...p.points]); } catch (e) { /* fall back to the shapes */ }
     if (!polys.length) polys = (r.shapes ?? []).filter(s => !s.hole).map(shapePoly).filter(p => p.length >= 6);
-    out.push({id: r.id, name: r.name, stairs: stairs && !raised, raise: raised ? raise : null, levels: [...(r.levels ?? [])], polys});
+    out.push({id: r.id, name: r.name, stairs: stairs && !raised, raise: raised ? raise : null, dry, levels: [...(r.levels ?? [])], polys});
   }
   return out;
 }
@@ -205,7 +207,20 @@ export function lookOf(scene = null) {
   const az = Number(sceneFlag(scene, "sunAz"));
   return {skin: sceneFlag(scene, "wallSkin") ?? get("wallSkin") ?? "neon", mood: sceneFlag(scene, "mood") ?? get("mood") ?? "auto",
     sunAz: sceneFlag(scene, "sunAz") !== undefined && Number.isFinite(az) ? az : null,
-    tint: hexRGB(sceneFlag(scene, "lightColor") ?? get("lightColor"))};
+    tint: hexRGB(sceneFlag(scene, "lightColor") ?? get("lightColor")),
+    weather: weatherOf(scene), dark: Number(scene?.environment?.darknessLevel ?? scene?.darkness ?? 0) || 0};
+}
+// Foundry's own weather (and FXMaster's) -> a Vantage weather
+const FOUNDRY_WEATHER = {rain: "rain", rainStorm: "storm", fog: "fog", snow: "snow", blizzard: "blizzard", leaves: "leaves",
+  autumnleaves: "leaves", snowstorm: "blizzard", hail: "storm", embers: "embers", clouds: "fog", stars: "fireflies"};
+/** the scene's weather: its Vantage choice (Scene Config > Vantage), else whatever Foundry (or FXMaster) shows on the map */
+export function weatherOf(scene = null) {
+  const own = sceneFlag(scene, "weather");
+  if (own) return own;
+  const id = String(scene?.weather ?? "").replace(/^fxmaster\./, "");
+  if (FOUNDRY_WEATHER[id]) return FOUNDRY_WEATHER[id];
+  for (const e of Object.values(scene?.flags?.fxmaster?.effects ?? {})) { const w = FOUNDRY_WEATHER[e?.type]; if (w) return w; }
+  return "none";
 }
 /** "#rrggbb" -> [r, g, b] in 0..1 (null when empty or not a colour) */
 export function hexRGB(h) {

@@ -22,6 +22,19 @@ export function animLight(l, t, k = 0) {
   return {...l, r: c[0], g: c[1], b: c[2], intensity: l.intensity * f};
 }
 
+/** lightning at time t (s): now and then a strike - a bright flash, a flicker, a fading afterglow (0 = none) */
+export function flashAt(t) {
+  let f = 0;
+  const slot = 7.5, k0 = Math.floor(t / slot);
+  for (const k of [k0, k0 - 1]) {
+    if (hash1(k * 3.17 + 0.5) < 0.3) continue;   // some slots stay quiet
+    const dt = t - (k * slot + hash1(k * 7.31 + 2.2) * 5.5);
+    if (dt < 0 || dt > 1.4) continue;
+    f = Math.max(f, Math.exp(-dt * 16) + (dt > 0.13 ? 0.7 * Math.exp(-(dt - 0.13) * 22) : 0) + (dt > 0.42 ? 0.35 * Math.exp(-(dt - 0.42) * 7) : 0));
+  }
+  return Math.min(1.2, f);
+}
+
 const D2R = Math.PI / 180;
 const norm = v => { const l = Math.hypot(...v) || 1; return v.map(x => x / l); };
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -193,7 +206,7 @@ export class PovView {
     }
     // haze starts behind what an overview looks at, so a far-away overview isn't murky
     const fogStart = this.cam.mode === "orbit" ? this.cam.dist * 0.8 : 0;
-    this.r.render(v, lights, st, {fogStart, ...this.opts, time: live ? t : 0, ...cut});
+    this.r.render(v, lights, st, {fogStart, ...this.opts, time: live ? t : 0, flash: live ? flashAt(t) : 0, ...cut});
   }
 
   snapshot({width = 1600, quality = 0.82, forPlayers = true} = {}) {

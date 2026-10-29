@@ -13,3 +13,7 @@
 .vantage .vtg-sep { flex: 1; }
 .vantage .vtg-help { position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: #9fd8e6aa; pointer-events: none; }
 .vantage .vtg-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: #8fefff; font-size: 15px; background: #05080ccc; }
+.vantage .vtg-bar .vtg-time { display: flex; align-items: center; gap: 5px; height: 28px; margin: 0; padding: 0 8px; font-size: 11px; color: #dff9ff;
+  background: rgba(6, 14, 22, 0.78); border: 1px solid #3ce6ff66; border-radius: 6px; }
+.vantage .vtg-bar .vtg-time input[type="range"] { width: 90px; height: 14px; margin: 0; padding: 0; accent-color: #3ce6ff; background: none; border: none; }
+.vantage .vtg-bar .vtg-weather { max-width: 170px; }

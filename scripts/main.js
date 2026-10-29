@@ -1,6 +1,6 @@
 // Vantage - see the battlemap in 3D from a token's eyes (or an overview), and show it to the players
 import {MOD, FIGURES, figureOf, L, viewOptions} from "./foundry.js";
-import {WALL_SKINS, MOODS} from "./renderer.js";
+import {WALL_SKINS, MOODS, WEATHER} from "./renderer.js";
 import {PovWindow, PovViewer, onSocket, sendSnapshot} from "./app.js";
 
 const S = k => `VANTAGE.Settings.${k}`;
@@ -41,6 +41,7 @@ function shadowOpts() { const sh = game.settings.get(MOD, "shadows"); return {sh
 const viewerTokens = foundry.utils.debounce(() => PovViewer.instance?.refreshTokens(), 300);
 for (const h of ["createToken", "updateToken", "deleteToken"]) Hooks.on(h, () => { if (PovViewer.instance?.mode === "live") viewerTokens(); });
 // a figure choice set on an actor's prototype token applies to its tokens already on the map
+Hooks.on("updateScene", doc => PovViewer.instance?.relook?.(doc));
 Hooks.on("updateActor", (actor, changes) => { if (foundry.utils.hasProperty(changes, `prototypeToken.flags.${MOD}`)) PovWindow.instance?.refreshTokens(); });
 
 // ------------------------------------------------------------------ config fields
@@ -78,6 +79,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const moodSel = [opt("", L("Scene.UseWorld"), f.mood), ...Object.keys(MOODS).map(k => opt(k, L(`Moods.${k}`), f.mood))].join("");
   const az = Number.isFinite(Number(f.sunAz)) && f.sunAz !== "" && f.sunAz != null ? f.sunAz : "";
   const lc = /^#[0-9a-f]{6}$/i.test(f.lightColor ?? "") ? f.lightColor : "";
+  const wxSel = [opt("", L("Scene.WeatherFollow"), f.weather), ...Object.keys(WEATHER).map(k => opt(k, L(`Weather.${k}`), f.weather))].join("");
   const fs = document.createElement("fieldset");
   fs.className = "vtg-scene";
   fs.innerHTML = `<legend><i class="fa-solid fa-vr-cardboard"></i> ${L("Scene.Legend")}</legend>
@@ -103,6 +105,10 @@ Hooks.on("renderSceneConfig", (app, html) => {
     <div class="form-group"><label>${L("Scene.LightColor")}</label>
       <div class="form-fields"><color-picker name="flags.${MOD}.lightColor" value="${lc}" placeholder="${escA(L("Scene.LightColorNone"))}"></color-picker></div>
       <p class="hint">${L("Scene.LightColorHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Scene.Weather")}</label>
+      <div class="form-fields"><select name="flags.${MOD}.weather">${wxSel}</select></div>
+      <p class="hint">${L("Scene.WeatherHint")}</p>
     </div>
     <div class="form-group"><label>${L("Scene.SunAz")}</label>
       <div class="form-fields"><input type="number" name="flags.${MOD}.sunAz" step="5" min="0" max="360" value="${az}" placeholder="${escA(L("Scene.SunAzAuto"))}"></div>

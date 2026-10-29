@@ -312,6 +312,14 @@ export async function buildWorld(data, opts = {}) {
     }
   }
 
+  // ---- where weather can't fall (ft): under a higher floor (also one hidden over the viewer's head), and in regions
+  // with a "suppress weather" behaviour (whole column)
+  const shelterFt = coverHeight.slice();
+  for (const rg of data.regions ?? []) {
+    if (!rg.dry || !rg.polys?.length) continue;
+    for (const k of rasterPolys(rg.polys, data, hs, hw, hh)) shelterFt[k] = 1e4;
+  }
+
   // ---- the map's average colour (tints the haze so it matches the scene: deep purple in a club, pale teal by a river)
   let meanCol = [0.03, 0.09, 0.11];
   try {
@@ -331,7 +339,7 @@ export async function buildWorld(data, opts = {}) {
     if (v > maxH) maxH = v; if (v < minH) minH = v;
   }
   return {W, H, ppf, gridPx: data.gridPx ?? ppf * 5, ox: data.ox, oy: data.oy, hs, hw, hh, floorCanvas: floor, heightData, heightFt, levelHeight, coverHeight,
-    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
+    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, shelterFt, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
     viewElev: view?.bottom ?? baseElev,   // the floor of the level being viewed (ft): what an overview looks at
     floorLayers, hasVideo: floorLayers.some(l => isVideo(l.media)), maxTex: opts.maxTex,
     levelIds: new Set(set.map(l => l.id))};

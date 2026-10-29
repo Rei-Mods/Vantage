@@ -73,10 +73,11 @@ Set a default in the world settings, and give any scene its own skin in **Scene 
 ### Lighting moods: match the map's vibe
 <p align="center"><img src="docs/images/lighting-moods.gif" width="80%" alt="A canyon base cycling through bright sun, golden hour, synthwave sunset, moonlight, aurora night, fey twilight, blood moon, under the sea, holy light and hellfire"></p>
 
-**Automatic** keeps the light that's painted on the map. Or pick one of 22 moods for the world, or per scene in **Scene Config → Vantage**:
+**Automatic** keeps the light that's painted on the map. Or pick one of 23 moods for the world, or per scene in **Scene Config → Vantage**:
 
 | Mood | What it looks like |
 |---|---|
+| Day cycle | Follows the scene's darkness (or the window's time slider): bright sun, golden hour, dusk, twilight, moonlight, blended |
 | Bright sun | Midday light, short crisp shadows, a blue sky |
 | Golden hour | A low warm sun, long shadows, an orange sky |
 | Overcast | Soft grey daylight with no hard shadows |
@@ -145,6 +146,13 @@ Put a grey image next to a map, named like the map plus `_height`, for example `
 The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors darken softly in corners and next to walls and crates. Bright lights and trims bloom. The haze takes on the map's own colours, so a club fades to purple and a river canyon to teal.
 
 <p align="center"><img src="docs/images/stage-lights.jpg" width="80%" alt="A DJ booth on a lit stage with a figure in front of it"></p>
+
+### Weather and time of day
+- **11 kinds of weather in 3D**: rain, thunderstorm (with lightning), snow, blizzard, fog (drifting ground mist), falling ash, embers, falling leaves, fireflies, sandstorm, or clear. Drops and flakes are real 3D particles: they fall behind and in front of figures, catch the light of nearby lamps, and stop at walls.
+- **Follows Foundry**: by default a scene shows its own Foundry weather (or FXMaster's). Pick another in the window or in Scene Config.
+- **Stays dry where it should**: regions with a *Suppress Weather* behaviour, and everything under a higher level.
+- Rain leaves wet ground with rings in the puddles; snow whitens the ground.
+- **Time of day**: the sun/moon slider in the window bar runs from noon through golden hour and dusk to moonlight. It sets the scene's darkness (so Foundry's own lighting follows) and switches the scene to the *Day cycle* lighting mood. Foundry's darkness control drives the 3D light too.
 
 ### Animated maps and lights
 - **Video maps** (`.webm` / `.mp4`) play in 3D, on every level, and walls and figures stand on the moving art.
@@ -259,7 +267,7 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 ### Per scene, region and token
 | Where | Field | Flag |
 |---|---|---|
-| Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock; Wall skin; Lighting mood; Light colour; Sun direction (degrees, 0 = top of the map) | `flags.vantage.heightMax`, `flags.vantage.raiseDark`, `flags.vantage.wallSkin`, `flags.vantage.mood`, `flags.vantage.lightColor`, `flags.vantage.sunAz` |
+| Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock; Wall skin; Lighting mood; Light colour; Weather; Sun direction (degrees, 0 = top of the map) | `flags.vantage.heightMax`, `flags.vantage.raiseDark`, `flags.vantage.wallSkin`, `flags.vantage.mood`, `flags.vantage.lightColor`, `flags.vantage.weather`, `flags.vantage.sunAz` |
 | Region Config → Placement → Vantage | Height (ft), negative = pit | `flags.vantage.raise` |
 | Token / Prototype Token Config → Appearance → Vantage 3D figure | Figure, 3D picture | `flags.vantage.figure`, `flags.vantage.standee` |
 | (token or actor flag) | Lie flat like an object | `flags.vantage.flat` |

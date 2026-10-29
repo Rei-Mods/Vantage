@@ -139,14 +139,17 @@
       "RebuildTitle": "Rebuild from the scene (walls, levels, lights, tokens)",
       "Help": "Drag: look · WASD: move · Q/E: down/up (Overview: turn) · Wheel: zoom · Shift: fast",
       "Hidden": "(hidden)",
-      "TokensView": "{name}'s view"
+      "TokensView": "{name}'s view",
+      "TimeTitle": "Time of day: drag from noon to night. Sets the scene's darkness and the Day cycle lighting mood.",
+      "WeatherTitle": "Weather in 3D (saved with the scene)"
     },
     "Notify": {
       "NoScene": "Vantage: no scene is open.",
       "GMOnly": "Vantage: only the GM can open the 3D view.",
       "Error": "Vantage: {error}",
       "Sent": "Vantage: sent to players.",
-      "LiveOn": "Vantage: players now follow your camera. Click Live again to stop."
+      "LiveOn": "Vantage: players now follow your camera. Click Live again to stop.",
+      "DayCycle": "Vantage: this scene's lighting mood is now Day cycle, so the 3D light follows the time of day."
     },
     "Scene": {
       "Legend": "Vantage (3D view)",
@@ -166,7 +169,10 @@
       "SunAzHint": "Where the sun or moon stands, as a compass bearing: 0 = top of the map, 90 = right, 180 = bottom, 270 = left. Match the shadows painted on the map. Empty = the mood's own.",
       "LightColor": "Light colour",
       "LightColorNone": "the mood's own",
-      "LightColorHint": "Tints the sun or moon, the sky and the haze: purple for a fey realm, red for a blood moon, green for a swamp. Empty = the world setting (or the mood's own colours)."
+      "LightColorHint": "Tints the sun or moon, the sky and the haze: purple for a fey realm, red for a blood moon, green for a swamp. Empty = the world setting (or the mood's own colours).",
+      "Weather": "Weather",
+      "WeatherFollow": "Follow the scene's weather",
+      "WeatherHint": "Rain, snow, fog and more in 3D. Empty = whatever the scene shows in Foundry (its weather, or FXMaster's). Regions with a Suppress Weather behaviour stay dry, and so does everything under a higher level."
     },
     "Skins": {
       "neon": "Neon panels (sci-fi)",
@@ -206,7 +212,22 @@
       "shadow": "Shadowfell",
       "synthwave": "Synthwave sunset",
       "alert": "Red alert",
+      "daycycle": "Day cycle (follows the scene's darkness)",
       "custom": "Custom colour (pick a Light colour)"
+    },
+    "Weather": {
+      "follow": "Follow the scene ({weather})",
+      "none": "Clear",
+      "rain": "Rain",
+      "storm": "Thunderstorm",
+      "snow": "Snow",
+      "blizzard": "Blizzard",
+      "fog": "Fog",
+      "ash": "Falling ash",
+      "embers": "Embers",
+      "leaves": "Falling leaves",
+      "fireflies": "Fireflies",
+      "sand": "Sandstorm"
     }
   }
 }
