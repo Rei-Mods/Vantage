@@ -66,7 +66,9 @@ export function regionsOf(scene) {
     let polys = [];
     try { polys = (r.polygons ?? []).map(p => [...p.points]); } catch (e) { /* fall back to the shapes */ }
     if (!polys.length) polys = (r.shapes ?? []).filter(s => !s.hole).map(shapePoly).filter(p => p.length >= 6);
-    out.push({id: r.id, name: r.name, stairs: stairs && !raised, raise: raised ? raise : null, dry, levels: [...(r.levels ?? [])], polys});
+    const f = r.flags?.[MOD] ?? {};
+    out.push({id: r.id, name: r.name, stairs: stairs && !raised, raise: raised ? raise : null, dry, levels: [...(r.levels ?? [])], polys,
+      look: f.look || null, front: f.front ?? null, pic: f.pic || null});   // what a raised area looks like from the side
   }
   return out;
 }

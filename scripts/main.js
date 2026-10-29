@@ -1,6 +1,7 @@
 // Vantage - see the battlemap in 3D from a token's eyes (or an overview), and show it to the players
 import {MOD, FIGURES, figureOf, L, viewOptions} from "./foundry.js";
 import {WALL_SKINS, MOODS, WEATHER} from "./renderer.js";
+import {PROP_LOOKS} from "./world.js";
 import {PovWindow, PovViewer, onSocket, sendSnapshot} from "./app.js";
 
 const S = k => `VANTAGE.Settings.${k}`;
@@ -54,13 +55,26 @@ Hooks.on("renderRegionConfig", (app, html) => {
   const root = rootOf(html) ?? app.element; if (!root) return;
   const part = root.querySelector('[data-application-part="placement"]') ?? root.querySelector('.tab[data-tab="placement"]');
   if (!part || part.querySelector(".vtg-raise")) return;
-  const v = app.document?.flags?.[MOD]?.raise;
+  const f = app.document?.flags?.[MOD] ?? {}, v = f.raise;
+  const look = f.look || "plain", front = f.front === null || f.front === undefined || f.front === "" ? "" : String(f.front);
+  const fronts = [["", "Region.FrontAuto"], ["0", "Region.FrontTop"], ["90", "Region.FrontRight"], ["180", "Region.FrontBottom"], ["270", "Region.FrontLeft"]];
   const fs = document.createElement("fieldset");
   fs.className = "vtg-raise";
   fs.innerHTML = `<legend><i class="fa-solid fa-vr-cardboard"></i> ${L("Region.Legend")}</legend>
     <div class="form-group"><label>${L("Region.Height")}</label>
       <div class="form-fields"><input type="number" name="flags.${MOD}.raise" step="0.5" min="-40" max="60" value="${Number.isFinite(v) ? v : ""}" placeholder="${escA(L("Region.Placeholder"))}"></div>
       <p class="hint">${L("Region.Hint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Region.Look")}</label>
+      <div class="form-fields"><select name="flags.${MOD}.look">${PROP_LOOKS.map(k => `<option value="${k}" ${k === look ? "selected" : ""}>${escA(L(`Looks.${k}`))}</option>`).join("")}</select></div>
+      <p class="hint">${L("Region.LookHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Region.Front")}</label>
+      <div class="form-fields"><select name="flags.${MOD}.front" data-dtype="String">${fronts.map(([k, l]) => `<option value="${k}" ${k === front ? "selected" : ""}>${escA(L(l))}</option>`).join("")}</select></div>
+    </div>
+    <div class="form-group"><label>${L("Region.Pic")}</label>
+      <div class="form-fields"><file-picker name="flags.${MOD}.pic" type="image" value="${escA(f.pic ?? "")}"></file-picker></div>
+      <p class="hint">${L("Region.PicHint")}</p>
     </div>`;
   (part.querySelector(".scrollable") ?? part).append(fs);
 });

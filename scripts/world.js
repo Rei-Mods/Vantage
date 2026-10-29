@@ -2,6 +2,9 @@
 // Pure functions over plain data so it can be tested outside Foundry; foundry.js feeds it.
 
 export const KIND = {floor: 0, rock: 1, wall: 2, door: 3, stairs: 4, prop: 5, terrain: 6};
+/** what a raised area can look like from the side (Region Config > Vantage > Looks like), in shader order (0 = plain) */
+export const PROP_LOOKS = ["plain", "stretch", "arcade", "vending", "server", "bookshelf", "crate", "container", "console", "bar", "counter",
+  "fridge", "lockers", "plinth", "barrels", "machine", "dresser", "display", "sandbags", "hay", "kiosk"];
 /** how far back "leaning" figures lean (high-angle / top-down token art), degrees from upright (setting tiltDeg) */
 export const TILT_DEG = 40;
 
@@ -244,6 +247,7 @@ export async function buildWorld(data, opts = {}) {
   }
 
   // ---- raised areas: regions with a Vantage height become blocks (crates, consoles, daises) or pits (negative)
+  const propRegions = [];   // the ones that look like something (arcade cabinets, shelves...) or wear a front picture
   for (const rg of data.regions ?? []) {
     const hr = Number(rg.raise);
     if (!rg.polys?.length || !Number.isFinite(hr) || Math.abs(hr) < 0.1) continue;
@@ -259,12 +263,16 @@ export async function buildWorld(data, opts = {}) {
       base = fl.length ? fl[fl.length >> 1] : baseElev;
     }
     const top = base + hr;
+    const used = [];
     for (const k of px) {
       if (kind[k] === KIND.rock && heightFt[k] > top) continue;
       heightFt[k] = top; levelHeight[k] = top;
       kind[k] = hr > 0 ? KIND.prop : KIND.floor;
       standFt[k] = top; standLo[k] = Math.min(base, top); standHi[k] = Math.max(base, top);
+      used.push(k);
     }
+    const look = Math.max(0, PROP_LOOKS.indexOf(rg.look ?? "plain"));
+    if (hr > 0 && used.length && (look > 0 || rg.pic)) propRegions.push({px: used, look, front: rg.front, pic: rg.pic ?? null, base, top});
   }
 
   // ---- walls: extrude sight-blocking walls and closed doors
@@ -312,6 +320,51 @@ export async function buildWorld(data, opts = {}) {
     }
   }
 
+  // ---- raised areas that look like something: per pixel the look, which way the front faces, and the region
+  const propData = new Uint8Array(hw * hh * 4), propInfo = [], propPics = [];
+  for (const [ri, pr] of propRegions.entries()) {
+    if (ri >= 254) break;
+    const inR = new Uint8Array(hw * hh); for (const k of pr.px) inR[k] = 1;
+    // front: as chosen (compass degrees, 0 = top of the map), else the side with the most open floor in front of it
+    let az = Number(pr.front);
+    if (!(pr.front !== null && pr.front !== undefined && pr.front !== "" && Number.isFinite(az))) {
+      const off = Math.max(2, Math.round(2.5 * ppf * hs)), dirs = [[0, -1, 0], [1, 0, 90], [0, 1, 180], [-1, 0, 270]];
+      let best = -1; az = 180;
+      for (const [dx, dy, a] of dirs) {
+        let n = 0;
+        for (const k of pr.px) {
+          const x = k % hw, y = (k / hw) | 0, ex = x + dx, ey = y + dy;
+          if (ex < 0 || ey < 0 || ex >= hw || ey >= hh || inR[ey * hw + ex]) continue;   // not an edge facing this way
+          const fx = x + dx * off, fy = y + dy * off;
+          if (fx < 0 || fy < 0 || fx >= hw || fy >= hh) continue;
+          const f = fy * hw + fx;
+          if (!inR[f] && (kind[f] === KIND.floor || kind[f] === KIND.terrain) && heightFt[f] <= pr.base + 0.5) n++;
+        }
+        if (n > best) { best = n; az = a; }
+      }
+    }
+    const ar = az * Math.PI / 180, R = [-Math.cos(ar), -Math.sin(ar)];   // the viewer's right, facing the front
+    let lo = Infinity, hi = -Infinity;
+    for (const k of pr.px) { const x = (k % hw + 0.5) / hs, y = (((k / hw) | 0) + 0.5) / hs, u = x * R[0] + y * R[1]; if (u < lo) lo = u; if (u > hi) hi = u; }
+    const g = Math.round(((az % 360) + 360) % 360 / 360 * 256) & 255;
+    for (const k of pr.px) { propData[k * 4] = pr.look; propData[k * 4 + 1] = g; propData[k * 4 + 2] = ri + 1; propData[k * 4 + 3] = 255; }
+    let pic = -1;
+    if (pr.pic) { const img = await loadImageLike(pr.pic); if (img) { pic = propPics.length; propPics.push(img); } }
+    propInfo.push({lo, w: Math.max(1, hi - lo), pic, seed: (ri * 0.618) % 1, az});
+  }
+  // front pictures in one atlas (portrait cells)
+  let propAtlas = null;
+  if (propPics.length) {
+    const cw = 256, ch = 512, cols = Math.min(4, propPics.length), rows = Math.ceil(propPics.length / cols);
+    const [ac, actx] = canvas2d(cw * cols, ch * rows);
+    propPics.forEach((img, i) => {
+      const [iw, ih] = mediaSize(img), x = (i % cols) * cw, y = Math.floor(i / cols) * ch;
+      try { actx.drawImage(img, x, y, cw, ch); } catch (e) { /* not drawable */ }
+      for (const pi of propInfo) if (pi.pic === i) pi.uv = [x / ac.width, y / ac.height, (x + cw) / ac.width, (y + ch) / ac.height, iw / ih];
+    });
+    propAtlas = ac;
+  }
+
   // ---- where weather can't fall (ft): under a higher floor (also one hidden over the viewer's head), and in regions
   // with a "suppress weather" behaviour (whole column)
   const shelterFt = coverHeight.slice();
@@ -339,7 +392,7 @@ export async function buildWorld(data, opts = {}) {
     if (v > maxH) maxH = v; if (v < minH) minH = v;
   }
   return {W, H, ppf, gridPx: data.gridPx ?? ppf * 5, ox: data.ox, oy: data.oy, hs, hw, hh, floorCanvas: floor, heightData, heightFt, levelHeight, coverHeight,
-    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, shelterFt, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
+    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, shelterFt, propData, propInfo, propAtlas, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
     viewElev: view?.bottom ?? baseElev,   // the floor of the level being viewed (ft): what an overview looks at
     floorLayers, hasVideo: floorLayers.some(l => isVideo(l.media)), maxTex: opts.maxTex,
     levelIds: new Set(set.map(l => l.id))};

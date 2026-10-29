@@ -24,7 +24,8 @@ uniform vec4 uLPos[${MAX_LIGHTS}], uLCol[${MAX_LIGHTS}];
 // uWxP = density, streak (s), size (px), opacity; uWxQ = cell (px), wobble (px), max height over the floor (px, 0 = any), self-lit
 uniform int uWx; uniform vec3 uWxVel, uWxCol, uWxMistCol; uniform vec4 uWxP, uWxQ; uniform float uWxFlash, uWxMist, uWxGround, uWxTop;
 uniform sampler2D uShelter;
-uniform vec4 uHover, uHoverCol;   // what the mouse points at: x, z, radius, height (px); colour, 1 = ring on the floor / 2 = a door   // ft: weather only falls above this (higher floors over the view, "suppress weather" regions)
+uniform vec4 uHover, uHoverCol;
+uniform sampler2D uPropData, uPropInfo, uPropPic;   // raised areas that look like something: per pixel look / front / region; per region box + picture   // what the mouse points at: x, z, radius, height (px); colour, 1 = ring on the floor / 2 = a door   // ft: weather only falls above this (higher floors over the view, "suppress weather" regions)
 uniform vec4 uSPos[${MAX_STANDEES}], uSUV[${MAX_STANDEES}], uSInfo[${MAX_STANDEES}], uSTint[${MAX_STANDEES}], uSRing[${MAX_STANDEES}];
 
 float hAt(vec2 xz){
@@ -294,6 +295,173 @@ vec3 skinTop(int sk, vec2 xz, vec2 uv){
   return textureLod(uFloor, uv, 4.5).rgb * 1.15;
 }
 
+// ---------------------------------------------------------------- raised areas that look like something
+// face 0 = the front, 1 = a side, 2 = the back; U = 0..1 across the front (left to right as you face it), Uf = ft along the
+// face, Y = ft over the floor, H = height (ft), W = width of the front (ft); tc = the top's colour, edge = the art at the top's
+// edge; writes the self-lit part (screens, LEDs, neon) to gEmit
+vec3 gEmit;
+vec3 hue3(float h){ return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0); }
+vec3 propFace(int L, int face, float U, float Uf, float Y, float H, float W, vec3 tc, vec3 edge, float px, float seed){
+  float T = clamp(Y / max(H, 0.5), 0.0, 1.0);
+  // a long block of cabinets / machines / racks: one unit every few feet along the front, each a little different
+  float unit = L == 2 ? 3.0 : L == 3 ? 3.5 : L == 4 ? 2.2 : L == 11 ? 3.0 : L == 8 ? 4.0 : L == 16 ? 4.0 : 0.0;
+  float edgeU = 1.0;
+  if (unit > 0.0 && face == 0) { float n = max(1.0, floor(W / unit + 0.5)); seed = fract(seed + floor(U * n) * 0.37); U = fract(U * n); W /= n; edgeU = min(U, 1.0 - U) * W; }
+  float mx = max(max(tc.r, tc.g), tc.b);
+  vec3 sat = mx > 0.02 ? clamp(tc / mx, 0.0, 1.0) : vec3(0.5);   // the top's hue at full strength
+  vec3 c = vec3(0.18);
+  gEmit = vec3(0.0);
+  if (L == 1) {                                     // the top's art carried down the sides
+    c = edge * (0.5 + 0.5 * T);
+  } else if (L == 2) {                              // arcade cabinet
+    if (face == 0) {
+      c = vec3(0.05, 0.05, 0.07);
+      if (T > 0.9) { c = sat * 0.3; gEmit = sat * (0.6 + 0.12 * sin(uTime * 3.0 + seed * 9.0)); }   // marquee
+      else if (T > 0.6 && T < 0.87 && U > 0.12 && U < 0.88) {                                    // the screen
+        vec2 q = vec2((U - 0.12) / 0.76, (T - 0.6) / 0.27);
+        vec3 scr = 0.5 + 0.5 * cos(6.2831 * (vec3(0.0, 0.33, 0.67) + q.x * 1.4 - q.y * 0.8 + uTime * 0.3 + seed * 3.0));
+        scr *= 0.7 + 0.3 * step(0.5, fract(Y * 24.0));
+        c = scr * 0.06; gEmit = scr * 0.42;
+      } else if (T > 0.5 && T < 0.58) {                                                          // control panel
+        c = vec3(0.14, 0.14, 0.18);
+        float b = length(vec2((fract(U * 7.0) - 0.5) * W / 7.0, (T - 0.54) * H));
+        if (b < 0.1 && U > 0.15 && U < 0.85) gEmit = hue3(floor(U * 7.0) / 7.0 + seed) * 0.9;
+      } else if (T > 0.2 && T < 0.34 && abs(U - 0.5) < 0.12) {                                   // coin door
+        c = vec3(0.11); if (abs(U - 0.5) < 0.025 && T > 0.25 && T < 0.29) gEmit = vec3(1.0, 0.35, 0.1) * 0.9;
+      }
+    } else if (face == 1) c = mix(vec3(0.04), sat * 0.55, smoothstep(0.3, 0.9, fract(Uf * 0.22 + T * 0.55 + seed))) * (0.55 + 0.45 * T);
+    else c = vec3(0.06);
+  } else if (L == 3) {                              // vending machine
+    c = sat * 0.3 + 0.04;
+    if (face == 0) {
+      if (U > 0.07 && U < 0.66 && T > 0.22 && T < 0.93) {                                        // glass, rows of drinks
+        vec2 g6 = vec2((U - 0.07) / 0.59 * 5.0, (T - 0.22) / 0.71 * 6.0), f = fract(g6);
+        vec3 item = hue3(hash(floor(g6) + seed)) * 0.8 + 0.1;
+        float can = step(0.25, f.x) * step(f.x, 0.75) * step(0.15, f.y) * step(f.y, 0.75);
+        c = mix(vec3(0.12, 0.14, 0.15), item * 0.35, can);
+        gEmit = mix(vec3(0.07, 0.08, 0.09), item * 0.3, can);
+      } else if (U > 0.72 && U < 0.92 && T > 0.6 && T < 0.7) gEmit = vec3(0.2, 1.0, 0.5) * 0.8;      // little display
+      else if (U > 0.72 && U < 0.92 && T > 0.38 && T < 0.58) { c = vec3(0.15); if (fract(U * 30.0) < 0.5 && fract(T * 40.0) < 0.5) c = vec3(0.6); }
+      else if (U > 0.12 && U < 0.6 && T > 0.06 && T < 0.17) c = vec3(0.02);                       // the slot
+    }
+  } else if (L == 4) {                              // server rack
+    c = vec3(0.07, 0.075, 0.09);
+    if (face == 0) {
+      float un = fract(Y / 0.15), lit = hash(vec2(floor(Y / 0.15), floor(U * 12.0)) + seed);
+      if (un > 0.88) c *= 0.5;
+      if (fract(U * 12.0) < 0.35 && un > 0.3 && un < 0.6 && lit > 0.55) {
+        float blink = step(0.4, fract(uTime * (0.5 + lit * 3.0) + lit * 7.0));
+        gEmit = (lit > 0.85 ? vec3(1.0, 0.6, 0.1) : lit > 0.7 ? vec3(0.2, 0.6, 1.0) : vec3(0.2, 1.0, 0.4)) * blink * 0.9;
+      }
+      if (U < 0.04 || U > 0.96) c = vec3(0.13);
+    } else if (abs(fract(Uf / 2.0) - 0.5) > 0.48) c *= 0.6;
+  } else if (L == 5) {                              // bookshelf
+    c = woodCol(Uf, Y, px, 0.9) * 0.9;
+    if (face == 0 && U > 0.04 && U < 0.96 && Y > 0.4 && T < 0.95) {
+      float sh = fract(Y / 1.25), row = floor(Y / 1.25), bi = floor(Uf / 0.16);
+      if (sh > 0.1) {
+        float bh = 0.55 + 0.4 * hash(vec2(bi, row + 7.0));
+        vec3 book = hue3(hash(vec2(bi, row + 3.0))) * mix(0.25, 0.55, hash(vec2(bi + 2.0, row)));
+        c = (sh - 0.1) / 0.9 < bh ? book * (0.8 + 0.2 * step(0.5, fract(Uf / 0.16))) : vec3(0.04);
+      }
+    }
+  } else if (L == 6) {                              // wooden crate: planks, a frame and a brace
+    c = woodCol(Uf, Y, px, 0.55) * 1.15;
+    vec2 q = vec2(fract(Uf / max(H, 1.0)), T);
+    if (min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y)) * H < 0.28 || abs(q.x - q.y) * H < 0.18) c = woodCol(Y + Uf, Uf, px, 0.4) * 0.8;
+  } else if (L == 7) {                              // cargo container: painted corrugated steel
+    c = mix(vec3(0.55, 0.2, 0.1), sat * 0.6, 0.5) * (0.75 + 0.25 * sin(Uf * 12.566));
+    if (face == 0) { if (abs(U - 0.5) * W < 0.06) c *= 0.4; if (abs(fract(U * 4.0) - 0.5) * W / 4.0 < 0.05 && T > 0.1 && T < 0.9) c = vec3(0.5); }
+    if (T > 0.94 || T < 0.05) c = vec3(0.12);
+  } else if (L == 8) {                              // computer console: screens and blinking buttons
+    c = vec3(0.09, 0.1, 0.12);
+    if (face == 0) {
+      if (T > 0.55 && T < 0.9 && fract(U * 3.0) > 0.08 && fract(U * 3.0) < 0.92) {
+        vec2 q = vec2(fract(U * 3.0), (T - 0.55) / 0.35);
+        float ln = step(0.6, fract(q.y * 9.0 - uTime * 0.4 + hash(vec2(floor(U * 3.0), seed)))) * step(q.x, 0.2 + 0.7 * hash(vec2(floor(q.y * 9.0), floor(U * 3.0))));
+        gEmit = mix(vec3(0.05, 0.35, 0.45), vec3(0.3, 1.0, 0.9), ln) * 0.7;
+      } else if (T > 0.3 && T < 0.48 && hash(vec2(floor(U * 20.0), floor(T * 30.0)) + seed) > 0.75)
+        gEmit = hue3(hash(vec2(floor(U * 20.0), 5.0))) * 0.7 * step(0.3, fract(uTime + hash(vec2(floor(U * 20.0), 1.0))));
+    }
+  } else if (L == 9) {                              // bar counter: panels, a brass foot rail, underglow
+    c = woodCol(Uf, Y, px, 0.35) * 0.8;
+    if (face != 2) {
+      if (abs(Y - 0.55) < 0.06) c = vec3(0.8, 0.6, 0.25);
+      if (T > 0.9) c = woodCol(Uf * 2.0, Y, px, 1.0) * 1.2;
+      if (Y < 0.12) { c = vec3(0.02); gEmit = sat * 0.9; }
+      if (face == 0 && T > 0.25 && T < 0.85 && abs(fract(Uf / 2.5) - 0.5) > 0.47) c *= 0.5;
+    }
+  } else if (L == 10) {                             // shop counter: a glass case on a wooden base
+    c = woodCol(Uf, Y, px, 0.3) * 0.75;
+    if (face == 0 && T > 0.45 && T < 0.93) {
+      float sh = fract((T - 0.45) / 0.48 * 2.0), cell = fract(Uf / 0.6);
+      vec3 item = hue3(hash(vec2(floor(Uf / 0.6), floor((T - 0.45) / 0.24)) + seed)) * 0.6;
+      float it = step(0.25, cell) * step(cell, 0.7) * step(0.15, sh) * step(sh, 0.6);
+      c = mix(vec3(0.07, 0.09, 0.1), item, it); gEmit = vec3(0.07, 0.08, 0.08) + item * it * 0.35;
+    }
+  } else if (L == 11) {                             // fridge
+    c = vec3(0.78, 0.8, 0.82) * (0.85 + 0.15 * T);
+    if (face == 0) {
+      if (abs(T - 0.68) * H < 0.03) c = vec3(0.2);
+      if (abs(U - 0.85) * W < 0.06 && ((T > 0.73 && T < 0.85) || (T > 0.4 && T < 0.62))) c = vec3(0.35);
+    }
+  } else if (L == 12) {                             // lockers
+    c = mix(vec3(0.25, 0.32, 0.4), sat * 0.5, 0.45);
+    if (face == 0) {
+      float d = fract(Uf / 1.2) * 1.2;
+      if (d < 0.04 || d > 1.16) c *= 0.35;
+      if (T > 0.82 && T < 0.92 && fract(Y * 10.0) < 0.5 && d > 0.25 && d < 0.95) c *= 0.3;
+      if (abs(d - 1.0) < 0.04 && T > 0.45 && T < 0.6) c = vec3(0.7);
+    }
+  } else if (L == 13) {                             // stone plinth: blocks, a moulded cap and base
+    vec3 bl = blocks(Uf, Y, 1.6, 0.9, 0.5);
+    c = vec3(0.55, 0.53, 0.5) * (0.8 + 0.3 * hash(bl.xy)) * (0.85 + 0.15 * vnoise(vec2(Uf, Y) * 3.0));
+    if (bl.z < 0.04) c *= 0.55;
+    if (T > 0.9 || T < 0.1) c *= 1.15;
+  } else if (L == 14) {                             // barrels: staves and iron hoops
+    c = woodCol(Uf, Y, px, 0.35) * (0.7 + 0.3 * sin(fract(Uf / 0.35) * 3.1416));
+    if (min(abs(T - 0.18), abs(T - 0.82)) < 0.035) c = vec3(0.22, 0.22, 0.24) * (1.0 + 0.3 * sin(Uf * 40.0));
+  } else if (L == 15) {                             // machinery: pipes, vents, hazard stripes, a glowing gauge
+    c = vec3(0.2, 0.22, 0.24) * (0.8 + 0.2 * vnoise(vec2(Uf, Y) * 2.0));
+    if (Y < 0.35) c = hazard(Uf * 1.5, Y * 1.5);
+    float pipe = abs(fract(Uf / 1.4) - 0.5) * 1.4;
+    if (pipe < 0.12 && T > 0.15) c = vec3(0.45, 0.42, 0.38) * (0.6 + 0.4 * (1.0 - pipe / 0.12));
+    if (fract(Y * 6.0) < 0.15 && T > 0.75 && face != 2) c *= 0.4;
+    if (face == 0 && length(vec2((U - 0.5) * W, Y - H * 0.6)) < 0.35) { c = vec3(0.1); gEmit = vec3(1.0, 0.55, 0.1) * (0.5 + 0.3 * sin(uTime * 2.0)); }
+  } else if (L == 16) {                             // wardrobe / dresser: drawers and brass knobs
+    c = woodCol(Uf, Y, px, 1.6) * 0.95;
+    if (face == 0) {
+      float dr = fract(T * 4.0);
+      if (dr * H / 4.0 < 0.04) c *= 0.4;
+      if (min(abs(U - 0.3), abs(U - 0.7)) * W < 0.06 && abs(dr - 0.5) * H / 4.0 < 0.06) c = vec3(0.75, 0.6, 0.3);
+      if (U * W < 0.08 || (1.0 - U) * W < 0.08) c *= 0.6;
+    }
+  } else if (L == 17) {                             // glass display case: lit shelves
+    c = vec3(0.1, 0.12, 0.14);
+    if (T > 0.15 && T < 0.95 && fract(Uf / 2.0) > 0.03) {
+      float sh = fract((T - 0.15) / 0.8 * 3.0), cell = fract(Uf / 0.7);
+      vec3 item = hue3(hash(vec2(floor(Uf / 0.7), floor((T - 0.15) / 0.8 * 3.0)) + seed)) * 0.7;
+      float it = step(0.3, cell) * step(cell, 0.65) * step(0.12, sh) * step(sh, 0.55);
+      c = mix(vec3(0.09, 0.1, 0.12), item, it) + 0.06 * step(0.9, fract((Uf + Y) * 0.6));
+      gEmit = vec3(0.06, 0.06, 0.07) + item * it * 0.25;
+    }
+  } else if (L == 18) {                             // sandbags
+    vec3 bl = blocks(Uf, Y, 1.4, 0.45, 0.5);
+    vec2 f = vec2(fract(Uf / 1.4 + 0.5 * mod(bl.y, 2.0)) - 0.5, fract(Y / 0.45) - 0.5);
+    c = vec3(0.62, 0.55, 0.4) * (0.55 + 0.6 * (1.0 - smoothstep(0.2, 0.6, length(f * vec2(1.0, 1.2))))) * (0.9 + 0.2 * hash(bl.xy));
+  } else if (L == 19) {                             // hay bales: straw and twine
+    c = vec3(0.86, 0.72, 0.38) * (0.62 + 0.25 * vnoise(vec2(Uf * 40.0, Y * 7.0)) + 0.25 * vnoise(vec2(Uf * 9.0 + Y * 13.0, Y * 31.0)));
+    if (min(abs(fract(Uf / 2.5) - 0.3), abs(fract(Uf / 2.5) - 0.7)) < 0.015) c = vec3(0.4, 0.3, 0.15);
+  } else if (L == 20) {                             // neon kiosk: a dark box outlined in neon, a lit window
+    c = vec3(0.05, 0.05, 0.07);
+    float e = face == 0 ? min(min(U * W, (1.0 - U) * W), min(Y, H - Y)) : min(Y, H - Y);
+    if (e < 0.12) gEmit = sat * 1.4;
+    if (face == 0 && T > 0.45 && T < 0.8 && U > 0.15 && U < 0.85) { c = vec3(0.08); gEmit = sat * 0.12 + vec3(0.03); }
+  }
+  if (edgeU < 0.05) { c *= 0.35; gEmit *= 0.2; }   // the gap between two units
+  return c;
+}
+
 void main(){
   vec2 ndc = vUv * 2.0 - 1.0;
   vec3 o = uCamPos;
@@ -348,7 +516,11 @@ void main(){
     bool cut = hb > lim + 0.5 * uPpf && p.y > lim - 0.5 * uPpf;
     bool side = slope > (kd == 6 ? 5.0 : 1.2) && !cut;   // height-map slopes stay map art (shaded by their slope) unless almost a cliff
     // a wall face: take the top height of the column we hit for the trim/shading reference
-    if (side) { vec2 inward = normalize(g); hb = max(hb, hAt(p.xz + inward * texel * 1.5)); kd = kindAt(p.xz + inward * texel * 1.0); }
+    vec2 inward = length(g) > 1e-6 ? normalize(g) : vec2(0.0);
+    if (side) { hb = max(hb, hAt(p.xz + inward * texel * 1.5)); kd = kindAt(p.xz + inward * texel * 1.0); }
+    ivec4 pd = ivec4(0);
+    if (side && kd == 5) pd = ivec4(texelFetch(uPropData, ivec2(clamp((p.xz + inward * texel) / uWorld * uHRes, vec2(0.0), uHRes - 1.0)), 0) * 255.0 + 0.5);
+    vec3 emit = vec3(0.0);   // self-lit bits of props (screens, LEDs): added after the light
     vec2 n2 = length(g) > 1e-4 ? normalize(-g) : -normalize(d.xz + 1e-5);
     vec3 N = side ? vec3(n2.x, 0.0, n2.y) : vec3(0.0, 1.0, 0.0);
     float glow = 0.0; vec3 glowCol = uTrim;   // self-lit bits (glow trims, token rings): a dark mood doesn't dim them
@@ -402,6 +574,27 @@ void main(){
       if (kd == 1) {
         float strata = 0.8 + 0.2 * sin(p.y / (1.5 * uPpf) + (p.x + p.z) / (11.0 * uPpf)) + 0.08 * sin(p.y / (3.5 * uPpf) - (p.x - p.z) / (5.6 * uPpf));
         col = vec3(0.15, 0.17, 0.21) * (0.7 + 0.6 * vnoise(p.xz / (6.0 * uPpf))) * strata * (0.55 + 0.45 * rel);
+      } else if (kd == 5 && pd.z > 0) {
+        // a raised area that looks like something (Region Config > Vantage): front, sides and back drawn as it
+        vec4 inf = texelFetch(uPropInfo, ivec2(pd.z - 1, 0), 0);
+        float az = float(pd.y) / 256.0 * 6.2831853;
+        float fd = dot(n2, vec2(sin(az), -cos(az)));
+        int face = fd > 0.7 ? 0 : fd < -0.7 ? 2 : 1;
+        float U = clamp((dot(p.xz, vec2(-cos(az), -sin(az))) - inf.x) / inf.y, 0.0, 1.0);
+        float Hft = max(foot + dt, 0.5);
+        vec3 tc = textureLod(uFloor, (p.xz + inward * texel * 3.0) / uWorld, 5.0).rgb;
+        vec3 edge = textureLod(uFloor, (p.xz + inward * texel * 1.5) / uWorld, 1.0).rgb;
+        col = pd.x > 0 ? propFace(pd.x, face, U, fu, foot, Hft, inf.y / uPpf, tc, edge, pxFt, inf.w) : mix(vec3(0.15, 0.17, 0.2), tc, 0.3) * (0.62 + 0.38 * rel);
+        emit = pd.x > 0 ? gEmit : vec3(0.0);
+        if (inf.z > 0.0 && face == 0) {   // its front picture: full height, its own width (centred), never wider than the front
+          vec4 pr = texelFetch(uPropInfo, ivec2(pd.z - 1, 1), 0);
+          float pw = min(1.0, Hft * inf.z / max(inf.y / uPpf, 0.1)), pu = (U - 0.5) / pw + 0.5;
+          if (pu >= 0.0 && pu <= 1.0) {
+            vec4 pic = texture(uPropPic, mix(pr.xy, pr.zw, vec2(pu, 1.0 - clamp(foot / Hft, 0.0, 1.0))));
+            col = mix(col, pic.rgb, pic.a); emit *= 1.0 - pic.a;
+          }
+        }
+        if (dt < 0.1) col = mix(col, textureLod(uFloor, uv, 1.0).rgb, 0.5);   // the top's lip
       } else if (kd == 5 && raisedSkin(uSkin) == 0) {
         // raised area (crate, console, dais): plain dark metal, a soft lighter lip at the top, no glow trim
         // the top's own colour tints the metal a little, darker toward the foot; panel seams every 2 ft and down the sides
@@ -479,6 +672,7 @@ void main(){
       col += alb * uWxFlash * vec3(0.75, 0.8, 1.0) * (side ? 0.55 : 1.0) * mix(0.2, 1.0, outd);
     }
     if (uMood > 0.5) col = mix(col, glowCol * uTrimK, glow);
+    col += emit * (uMood > 0.5 ? max(uTrimK, 1.0) : 1.0);
     if (uAO > 0.0 && !cut) col *= mix(1.0, side ? aoSide(p, n2, texel) : aoFloor(p, t), uAO * 0.85);
     float fog = 1.0 - exp(-max(t - uFogStart * uPpf, 0.0) / (uFogFt * uPpf));
     col = mix(col, uFogCol, fog);
@@ -788,6 +982,22 @@ export class PovRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.tex.shelter = sh;
+    // raised areas that look like something: look / front / region per pixel, a box and picture per region
+    for (const k of ["propData", "propInfo", "propPic"]) if (this.tex[k]) gl.deleteTexture(this.tex[k]);
+    const nn = (t) => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; };
+    let t2 = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t2);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, world.hw, world.hh, 0, gl.RGBA, gl.UNSIGNED_BYTE, world.propData ?? new Uint8Array(world.hw * world.hh * 4));
+    this.tex.propData = nn(t2);
+    // row 0: box along the front (lo, width px), the picture's aspect (-1 = none), a seed; row 1: the picture's cell in the atlas
+    const PI = world.propInfo ?? [], n = Math.max(1, PI.length), info = new Float32Array(n * 2 * 4);
+    PI.forEach((r, i) => { info.set([r.lo, r.w, r.pic >= 0 && r.uv ? r.uv[4] || 1 : -1, r.seed ?? 0], i * 4); info.set(r.uv ? r.uv.slice(0, 4) : [0, 0, 1, 1], (n + i) * 4); });
+    if (!PI.length) info.set([0, 1, -1, 0], 0);
+    t2 = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t2);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, n, 2, 0, gl.RGBA, gl.FLOAT, info);
+    this.tex.propInfo = nn(t2);
+    if (world.propAtlas) this.tex.propPic = this._texture(world.propAtlas, {mip: true});
+    else { t2 = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t2); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); this.tex.propPic = nn(t2); }
   }
 
   /** replace the floor art (a video frame or a re-composited canvas) - for animated maps */
@@ -868,6 +1078,7 @@ export class PovRenderer {
       // weather (feet -> pixels)
       const P = W.ppf, wk = Wx ? (Wx.k ?? 0) : 0;
       this._bindTex(5, this.tex.shelter, u.uShelter);
+      this._bindTex(6, this.tex.propData, u.uPropData); this._bindTex(7, this.tex.propInfo, u.uPropInfo); this._bindTex(8, this.tex.propPic, u.uPropPic);
       gl.uniform1i(u.uWx ?? null, wk);
       gl.uniform3fv(u.uWxVel ?? null, (Wx?.vel ?? [0, 0, 0]).map(v => v * P));
       gl.uniform3fv(u.uWxCol ?? null, Wx?.col ?? [1, 1, 1]);

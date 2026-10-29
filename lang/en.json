@@ -113,7 +113,17 @@
       "Legend": "Vantage (3D view)",
       "Height": "Height (ft)",
       "Placeholder": "none",
-      "Hint": "Raises this area into a solid block in the 3D view: a crate, console, counter or dais (the map art stays on top). Negative = a pit. Leave empty for a normal region. Tokens inside stand on top."
+      "Hint": "Raises this area into a solid block in the 3D view: a crate, console, counter or dais (the map art stays on top). Negative = a pit. Leave empty for a normal region. Tokens inside stand on top.",
+      "Look": "Looks like",
+      "LookHint": "With a height: what the sides of this block look like (the top keeps the map art). The front faces the open floor unless you pick a side.",
+      "Front": "Front faces",
+      "FrontAuto": "Automatic (the open side)",
+      "FrontTop": "Top of the map",
+      "FrontRight": "Right",
+      "FrontBottom": "Bottom of the map",
+      "FrontLeft": "Left",
+      "Pic": "Front picture",
+      "PicHint": "Optional: an image (a cabinet front, a shop sign, a door) drawn on the front face, top to bottom. Transparent parts show the look underneath."
     },
     "Token": {
       "Legend": "Vantage 3D figure",
@@ -233,6 +243,29 @@
       "leaves": "Falling leaves",
       "fireflies": "Fireflies",
       "sand": "Sandstorm"
+    },
+    "Looks": {
+      "plain": "Plain (dark metal / the wall skin)",
+      "stretch": "The top's art, carried down",
+      "arcade": "Arcade cabinet",
+      "vending": "Vending machine",
+      "server": "Server rack",
+      "bookshelf": "Bookshelf",
+      "crate": "Wooden crate",
+      "container": "Cargo container",
+      "console": "Computer console",
+      "bar": "Bar counter",
+      "counter": "Shop counter",
+      "fridge": "Fridge",
+      "lockers": "Lockers",
+      "plinth": "Stone plinth",
+      "barrels": "Barrels",
+      "machine": "Machinery",
+      "dresser": "Wardrobe / dresser",
+      "display": "Glass display case",
+      "sandbags": "Sandbags",
+      "hay": "Hay bales",
+      "kiosk": "Neon kiosk"
     }
   }
 }
