@@ -1046,9 +1046,10 @@ void main(){
     vec3 w0 = o - A; float bq = dot(d, sd), dw = dot(d, w0), e = dot(sd, w0);
     float u = clamp(e + bq * (bq * e - dw) / max(1.0 - bq * bq, 1e-4), 0.0, L), s = bq * u - dw;
     if (s <= 0.0 || s >= tOcc) continue;
-    float dist = length(w0 + d * s - sd * u), rw = max(0.05 * uPpf, s * 2.0 * uTanX / uRes.x * 1.2);
+    float dist = length(w0 + d * s - sd * u), rw = max(0.06 * uPpf, s * 2.0 * uTanX / uRes.x * 2.2);   // at least ~2 px wide
     float dash = step(0.45, fract(u / (1.2 * uPpf) - uTime * 1.5));
-    col += uBeamC[i].rgb * (1.0 - smoothstep(rw * 0.3, rw, dist)) * (0.55 + 0.45 * dash) * 1.2 * smoothstep(2.0 * uPpf, 6.0 * uPpf, u);   // fades in past the attacker's own head
+    float core = 1.0 - smoothstep(rw * 0.35, rw, dist), halo = 1.0 - smoothstep(0.0, rw * 3.5, dist);   // a bright core in a soft glow
+    col += uBeamC[i].rgb * (core * (0.55 + 0.45 * dash) * 1.2 + halo * 0.3) * smoothstep(2.0 * uPpf, 6.0 * uPpf, u);   // fades in past the attacker's own head
   }
   if (uMood > 0.5) col = max(mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, uSat), 0.0);
   outColor = vec4(col, 1.0);
