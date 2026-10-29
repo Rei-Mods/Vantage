@@ -65,7 +65,8 @@ export function regionsOf(scene) {
     const raise = Number(r.flags?.[MOD]?.raise);
     const raised = Number.isFinite(raise) && Math.abs(raise) >= 0.1;
     const skin = r.flags?.[MOD]?.skin || null;   // its own wall skin
-    if (!stairs && !raised && !dry && !skin) continue;
+    const sky = r.flags?.[MOD]?.sky;
+    if (!stairs && !raised && !dry && !skin && sky !== "open" && sky !== "roof") continue;
     let polys = [];
     try { polys = (r.polygons ?? []).map(p => [...p.points]); } catch (e) { /* fall back to the shapes */ }
     if (!polys.length) polys = (r.shapes ?? []).filter(s => !s.hole).map(shapePoly).filter(p => p.length >= 6);
@@ -73,7 +74,7 @@ export function regionsOf(scene) {
     out.push({id: r.id, name: r.name, stairs: stairs && !raised, raise: raised ? raise : null, dry, levels: [...(r.levels ?? [])], polys,
       look: f.look || null, front: f.front ?? null, pic: f.pic || null,   // what a raised area looks like from the side
       under: Number.isFinite(Number(f.under)) && f.under !== "" && f.under !== null ? Number(f.under) : null,   // its underside: a bridge, a roof
-      skin});
+      skin, sky: f.sky === "open" || f.sky === "roof" ? f.sky : null});   // ceiling here / open sky here
   }
   return out;
 }
@@ -251,9 +252,21 @@ export function nearestFoe(scene, tok, list) {
 }
 
 const boolOr = (v, dflt) => v === undefined ? dflt : v === true || v === "true";
+// what a map's name says about it: "in" (a club, a tavern, a dungeon), "out" (a street, a forest, a canyon) or null.
+// Helps automatic ceilings on interior maps whose outer walls aren't drawn (the map's edge is the building's wall).
+const INDOOR_WORDS = /\b(club|nightclub|bar|tavern|inn|pub|saloon|shop|store|office|lab|laboratory|apartments?|house|home|mansion|manor|hall|library|church|chapel|cathedral|dungeon|crypt|tomb|catacombs?|caves?|cavern|mines?|sewers?|vault|bunker|prison|jail|warehouse|factory|interior|inside|basement|cellar|casino|arcade|restaurant|diner|kitchen|hospital|clinic|bank|hotel|motel|museum|theat(?:er|re)|gym|garage|hangar|corridors?|hallway|brothel|den|lair|server|penthouse|loft|studio|bathhouse|throne|ballroom|barracks|armory|armoury|forge|smithy)\b/i;
+const OUTDOOR_WORDS = /\b(street|streets|city|road|highway|alley|forest|woods|jungle|desert|canyon|river|lake|beach|coast|shore|camp|campsite|field|farm|village|town|market|bazaar|plaza|square|park|garden|graveyard|cemetery|ruins|rooftops?|deck|docks?|harbou?r|port|bridge|mountain|cliffs?|swamp|marsh|island|battlefield|courtyard|exterior|outside|crash|wilderness|valley|oasis|crossroads|outpost|wasteland|junkyard)\b/i;
+export function indoorsGuess(scene) {
+  const names = [scene?.name ?? "", ...(scene?.levels?.contents ?? []).map(l => decodeURIComponent(String(l.background?.src ?? "").split("/").pop() ?? ""))].join(" ").replace(/[_\-.]+/g, " ");
+  const i = INDOOR_WORDS.test(names), o = OUTDOOR_WORDS.test(names);
+  return i && !o ? "in" : o && !i ? "out" : null;
+}
+
 export function buildOptions(scene = null) {
   return {wallHeight: setting("wallHeight"), doorHeight: setting("doorHeight"), rockHeight: setting("rockHeight"),
-    raiseDark: boolOr(sceneFlag(scene, "raiseDark"), setting("raiseDark")), darkThreshold: setting("darkThreshold"), heightMapMax: heightMaxOf(scene)};
+    raiseDark: boolOr(sceneFlag(scene, "raiseDark"), setting("raiseDark")), darkThreshold: setting("darkThreshold"), heightMapMax: heightMaxOf(scene),
+    ceiling: sceneFlag(scene, "ceiling") ?? (() => { try { return setting("ceilings"); } catch (e) { return "auto"; } })(),
+    indoors: indoorsGuess(scene)};
 }
 /** 0 = night, 1 = full daylight, from the scene's darkness level */
 export function daylightOf(scene) {

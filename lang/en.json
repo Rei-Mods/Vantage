@@ -8,6 +8,11 @@
         "Name": "Wall height (ft)",
         "Hint": "How tall sight-blocking walls are in the 3D view."
       },
+      "ceilings": {
+        "Name": "Ceilings",
+        "Hint": "Rooms get a ceiling at wall height, so looking up indoors shows a ceiling (in the wall skin's material) instead of the sky, and the sun and rain stay outside. Automatic = places closed in by walls and doors (an open arch up to about 6 ft still counts as closed), Suppress Weather regions, and the whole map when its name says it is an interior (a club, a tavern, a dungeon) but its outer walls aren't drawn. Scenes and regions can override it.",
+        "Choices": {"auto": "Automatic (rooms closed in by walls)", "all": "The whole map is indoors", "none": "Open sky (no ceilings)"}
+      },
       "doorHeight": {
         "Name": "Door height (ft)",
         "Hint": "How tall closed doors are in the 3D view."
@@ -135,9 +140,14 @@
       "FrontLeft": "Left",
       "Pic": "Front picture",
       "PicHint": "Optional: an image (a cabinet front, a shop sign, a door) drawn on the front face, top to bottom. Transparent parts show the look underneath.",
+      "Sky": "Ceiling here",
+      "SkyAuto": "Automatic",
+      "SkyRoof": "A ceiling",
+      "SkyOpen": "Open sky",
+      "SkyHint": "Force a ceiling over this area (a covered porch, a tent, a room whose walls leak) or keep it open to the sky (a walled courtyard, a roofless ruin).",
       "Skin": "Wall skin here",
       "SkinScene": "The scene's skin",
-      "SkinHint": "Walls (and raised areas) inside this region wear this skin: a brick building on a neon street, a wooden cabin in a stone keep. It works with or without a height."
+      "SkinHint": "Walls, ceilings and raised areas inside this region wear this skin: a brick building on a neon street, a wooden cabin in a stone keep. It works with or without a height."
     },
     "Token": {
       "Legend": "Vantage 3D figure",
@@ -193,7 +203,9 @@
       "On": "On",
       "Off": "Off",
       "WallSkin": "Wall skin",
-      "WallSkinHint": "What this scene's walls are made of. Empty = the world setting.",
+      "WallSkinHint": "What this scene's walls are made of (ceilings match). Empty = the world setting.",
+      "Ceiling": "Ceilings",
+      "CeilingHint": "Indoors, looking up shows a ceiling instead of the sky. Automatic finds the rooms closed in by walls (and treats maps named like interiors as indoors); pick The whole map for an interior whose outer walls aren't drawn, or Open sky for an outdoor map. Regions can add or remove a ceiling (Region Config > Vantage). Empty = the world setting.",
       "Mood": "Lighting mood",
       "MoodHint": "The light of this scene in 3D: a sun, moon or night glow to match the map's vibe. Empty = the world setting.",
       "SunAz": "Sun direction (degrees)",

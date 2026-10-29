@@ -25,6 +25,7 @@ uniform vec4 uLPos[${MAX_LIGHTS}], uLCol[${MAX_LIGHTS}];
 uniform int uWx; uniform vec3 uWxVel, uWxCol, uWxMistCol; uniform vec4 uWxP, uWxQ; uniform float uWxFlash, uWxMist, uWxGround, uWxTop;
 uniform sampler2D uShelter;
 uniform sampler2D uSlab; uniform float uSlabOn;   // overhangs (bridges, roofs, ceilings): a floating slab per point, bottom..top (ft)
+uniform sampler2D uCeil; uniform float uCeilH[8]; uniform int uCeilN; uniform float uCeilSun;   // uCeilSun: the camera is under a ceiling's height (so ceilings keep the sun out)   // rooms' ceilings: per point R = which height (1..8, 0 none), G = the slab here is a room's ceiling; heights (ft)
 uniform vec4 uHover, uHoverCol;
 uniform sampler2D uPropData, uPropInfo, uPropPic;
 uniform sampler2D uVis; uniform float uVisOn;      // a player's sight: R = in sight now, G = explored before
@@ -58,6 +59,24 @@ vec2 slabAt(vec2 xz){
 }
 bool inSlab(vec3 p, float t){ vec2 s = slabAt(p.xz); return s.y > s.x && p.y > s.x && p.y < min(s.y, cutLim(p.xz, t)); }
 bool solidAt(vec3 p, float t){ return p.y < hCut(p, t) || inSlab(p, t); }
+// a room's ceiling: flat, seen only from below; how far along the ray the first one is (1e12 = none)
+float ceilHit(vec3 o, vec3 d, bool cam){
+  float best = 1e12;
+  if (d.y < 1e-4) return best;
+  for (int i = 0; i < 8; i++) {
+    if (i >= uCeilN) break;
+    float h = uCeilH[i] * uPpf;
+    if (o.y > h - 0.05 * uPpf) continue;
+    float tc = (h - o.y) / d.y;
+    if (tc >= best) continue;
+    vec2 xz = o.xz + d.xz * tc;
+    if (xz.x < 0.0 || xz.y < 0.0 || xz.x >= uWorld.x || xz.y >= uWorld.y) continue;
+    if (int(texelFetch(uCeil, ivec2(xz / uWorld * uHRes), 0).r * 255.0 + 0.5) != i + 1) continue;
+    if (cam && cutLim(xz, tc) < h) continue;
+    best = tc;
+  }
+  return best;
+}
 int kindAt(vec2 xz){
   ivec2 ij = ivec2(clamp(xz / uWorld * uHRes, vec2(0.0), uHRes - 1.0));
   return int(texelFetch(uHeight, ij, 0).g + 0.5);
@@ -174,6 +193,7 @@ float mistAmt(vec3 o, vec3 d, float tOcc){
 
 // sun / moon shadow: march toward the sun over the max-height pyramid, on coarser cells as the steps grow
 float sunShadow(vec3 p){
+  if (uCeilSun > 0.5 && ceilHit(p, uSunDir, false) < 1e11) return 0.0;   // indoors, seen from inside: the ceiling keeps the sun out (overviews stay a doll's house)
   if (uSunShadow < 0.5) return 1.0;
   vec3 d = uSunDir; if (d.y < 0.02) return 1.0;
   float texel = uWorld.x / uHRes.x, res = 1.0;
@@ -305,6 +325,35 @@ vec3 skinTop(int sk, vec2 xz, vec2 uv){
   if (sk == 10) return vec3(0.14, 0.32, 0.10) * (0.7 + 0.6 * vnoise(q * 5.0));
   if (sk == 11) return vec3(0.72, 0.58, 0.40) * n;
   return textureLod(uFloor, uv, 4.5).rgb * 1.15;
+}
+// ceilings (seen from below) in the wall skin's material; xz in px; may light a strip (glow, glowCol)
+vec3 ceilSkin(int sk, vec2 xz, vec2 uv, float px, inout float glow, inout vec3 glowCol){
+  vec2 q = xz / uPpf; vec3 c;
+  if (sk == 0) {            // neon: dark metal panels (like the walls), recessed seams, glowing light strips
+    vec2 cell = floor(q / 5.0), f = abs(fract(q / 5.0) - 0.5) * 5.0;
+    c = mix(vec3(0.12, 0.13, 0.155), textureLod(uFloor, uv, 6.0).rgb, 0.22) * (0.82 + 0.22 * hash(cell + 7.3)) * (0.92 + 0.1 * vnoise(q * 0.8));
+    c *= mix(1.0, 0.55, sstep(2.38, 2.45, max(f.x, f.y)) * dtl(0.1, px));
+    float sx = abs(mod(q.x + 7.5, 15.0) - 7.5), sy = abs(fract(q.y / 10.0) - 0.5) * 10.0;
+    if (sx < 0.2 && sy < 4.2) { glow = 1.0; glowCol = uTrim; }                // a light strip in every third row
+    else if (sx < 0.45 && sy < 4.35) c *= 0.5;                                   // its housing
+  } else if (sk == 12) {    // match the map: its own colours, dimmed, in big plain panels
+    c = textureLod(uFloor, uv, 5.0).rgb * 0.55 + vec3(0.02);
+    c *= mix(1.0, 0.7, sstep(0.06, 0.02, blocks(q.x, q.y, 6.0, 6.0, 0.0).z) * dtl(0.12, px));
+  } else if (sk == 5) {     // boards across joists
+    c = woodCol(q.x, q.y, px, 0.8) * 0.85;
+    if (abs(mod(q.y, 4.0) - 2.0) > 1.68) c = woodCol(q.y, q.x, px, 0.6) * 0.55;
+  } else if (sk == 6) {     // plaster between dark timber beams
+    c = vec3(0.70, 0.66, 0.56) * (0.88 + 0.14 * fbm(q * 1.6));
+    if (abs(mod(q.x, 4.0) - 2.0) > 1.7 || abs(mod(q.y, 16.0) - 8.0) > 7.45) c = vec3(0.22, 0.13, 0.07) * (0.85 + 0.3 * vnoise(vec2(q.x * 0.4, q.y * 4.0)));
+  } else if (sk == 7) {     // steel deck plates on girders
+    c = wallSkin(7, q.x, q.y, 9.0, 9.0, uv, xz, vec2(0.0), false, px);
+    if (abs(mod(q.x, 8.0) - 4.0) > 3.6) c = vec3(0.20, 0.21, 0.23) * (0.9 + 0.2 * vnoise(q * 3.0));
+  } else if (sk == 9) {     // marble coffers with gold edges
+    c = wallSkin(9, q.x, q.y, 9.0, 9.0, uv, xz, vec2(0.0), false, px);
+    vec2 f = abs(fract(q / 6.0) - 0.5) * 6.0; float e = 3.0 - max(f.x, f.y);
+    if (e < 0.12) c = vec3(0.95, 0.72, 0.30) * (0.85 + 0.3 * vnoise(q * 2.0)); else if (e < 0.5) c *= 0.8;
+  } else c = wallSkin(sk, q.x, q.y, 9.0, 9.0, uv, xz, vec2(0.0), false, px);   // concrete, brick, stone, rock, scrap, hedge, sandstone
+  return c;
 }
 
 // ---------------------------------------------------------------- raised areas that look like something
@@ -678,7 +727,12 @@ void main(){
   if (hit) {
     float a = tp, b = t;
     for (int k = 0; k < 9; k++) { float m = 0.5 * (a + b); vec3 q = o + d * m; if (solidAt(q, m)) b = m; else a = m; }
-    t = b; tHit = t;
+    t = b;
+  }
+  bool isCeil = false;   // a room's ceiling overhead (nearer than what the march found)
+  if (uCeilN > 0) { float tc = ceilHit(o, d, true); if (tc < (hit ? t : 1e12) && tc > 0.0) { hit = true; isCeil = true; t = tc; } }
+  if (hit) {
+    tHit = t;
     vec3 p = o + d * t;
     float hb = hAt(p.xz);
     int kd = kindAt(p.xz);   // re-read from inside the column on side hits (below)
@@ -693,10 +747,11 @@ void main(){
     vec2 sl = slabAt(p.xz);
     bool onSlab = sl.y > sl.x && p.y > hb + 0.2 * uPpf && p.y > sl.x - 0.4 * uPpf;
     bool underSlab = !onSlab && sl.y > sl.x && p.y < sl.x;
+    if (isCeil) { onSlab = true; underSlab = false; }
     int sf = 0;
     vec2 en = vec2(0.0);
     if (onSlab) {
-      sf = (p.y > sl.y - 0.35 * uPpf && d.y < 0.0) ? 1 : (p.y < sl.x + 0.35 * uPpf && d.y > 0.0) ? 2 : 3;
+      sf = isCeil ? 2 : (p.y > sl.y - 0.35 * uPpf && d.y < 0.0) ? 1 : (p.y < sl.x + 0.35 * uPpf && d.y > 0.0) ? 2 : 3;
       if (sf == 3) {   // which way its edge faces
         float ee = texel * 1.5;
         vec2 so = vec2((slabAt(p.xz + vec2(ee, 0.0)).y > -0.5 ? 1.0 : 0.0) - (slabAt(p.xz - vec2(ee, 0.0)).y > -0.5 ? 1.0 : 0.0),
@@ -707,7 +762,7 @@ void main(){
     }
     // a wall face: take the top height of the column we hit for the trim/shading reference
     vec2 inward = length(g) > 1e-6 ? normalize(g) : vec2(0.0);
-    if (side) { hb = max(hb, hAt(p.xz + inward * texel * 1.5)); kd = kindAt(p.xz + inward * texel * 1.0); }
+    if (side && !onSlab) { hb = max(hb, hAt(p.xz + inward * texel * 1.5)); kd = kindAt(p.xz + inward * texel * 1.0); }
     // per point: a raised area's look / front / region (rgb) and a region's own wall skin (a, 0 = the scene's)
     ivec4 pd = ivec4(texelFetch(uPropData, ivec2(clamp((p.xz + (side ? inward * texel : vec2(0.0))) / uWorld * uHRes, vec2(0.0), uHRes - 1.0)), 0) * 255.0 + 0.5);
     if (!(side && kd == 5)) pd.xyz = ivec3(0);
@@ -718,6 +773,7 @@ void main(){
     vec3 N = side ? vec3(n2.x, 0.0, n2.y) : vec3(0.0, 1.0, 0.0);
     if (sf == 2) N = vec3(0.0, -1.0, 0.0);
     float glow = 0.0; vec3 glowCol = uTrim;   // self-lit bits (glow trims, token rings): a dark mood doesn't dim them
+    bool skinCeil = false;                     // a ceiling in the wall skin's material
     float pxFt = t * 2.0 * uTanX / uRes.x / uPpf / (side ? max(abs(dot(d, N)), 0.25) : max(abs(d.y), 0.25));
     if (!side) {
       col = underSlab ? textureLod(uFloor, uv, 4.5).rgb * 0.8 : texture(uFloor, uv).rgb;
@@ -822,8 +878,22 @@ void main(){
         col = wallSkin(sk, fu, p.y / uPpf, dt, foot, uv, p.xz, n2, kd == 3, pxFt) * (0.55 + 0.45 * rel);
       }
     }
-    if (sf == 2) { col = textureLod(uFloor, uv, 6.0).rgb * 0.3 + vec3(0.045, 0.04, 0.035); glow = 0.0; }   // the underside of a deck or ceiling
-    else if (sf == 3) { col = textureLod(uFloor, uv, 2.0).rgb * 0.55; glow = 0.0; }                        // its edge
+    if (sf == 2) {   // the underside of a deck, or a ceiling (rooms', and a higher level's floor): those wear the wall skin
+      glow = 0.0; emit = vec3(0.0);
+      ivec2 cij = ivec2(clamp(p.xz / uWorld * uHRes, vec2(0.0), uHRes - 1.0));
+      if (isCeil || texelFetch(uCeil, cij, 0).g > 0.5) {
+        skinCeil = true;
+        col = ceilSkin(sk, p.xz, uv, pxFt, glow, glowCol);
+        if (glow > 0.0) { emit += glowCol * glow * 1.1; col *= 0.4; glow = 0.0; }   // light strips shine in any light
+        float nw = 0.0;   // darker where it meets a wall
+        for (int q = 0; q < 8; q++) {
+          float an = float(q) * 0.785398, rr = (q < 4 ? 0.7 : 1.6) * uPpf;
+          nw += step(p.y - 0.8 * uPpf, hAt(p.xz + vec2(cos(an), sin(an)) * rr)) * (q < 4 ? 0.6 : 0.4);
+        }
+        col *= 1.0 - 0.14 * nw;
+      } else col = textureLod(uFloor, uv, 6.0).rgb * 0.3 + vec3(0.045, 0.04, 0.035);
+    }
+    else if (sf == 3) { col = textureLod(uFloor, uv, 2.0).rgb * 0.55; glow = 0.0; emit = vec3(0.0); }      // its edge
     // light: "automatic" keeps the map's own light (walls shaded by a fixed key); a mood tints it, adds a sun (or moon)
     // with shadows, and scales the scene's lights
     float keyT = clamp(dot(N.xz, normalize(vec3(0.35, 0.8, -0.45)).xz), 0.0, 1.0);
@@ -854,8 +924,9 @@ void main(){
       acc += fall * ndl * mix(0.12, 1.0, sh) * uLCol[l].rgb;
     }
     col += (acc * (side ? 1.0 : 0.6) * max(alb, vec3(0.08)) * 2.2 + acc * 0.12) * uLightK;
+    if (skinCeil) col += alb * textureLod(uFloor, uv, 7.5).rgb * (uMood > 0.5 ? 0.5 * clamp(dot(uAmb, vec3(0.33)) + 0.25 * uLightK, 0.12, 1.0) : 0.45);   // light bounced off the floor
     if (uWx > 0 || uWxFlash > 0.0) {
-      float outd = p.y >= shelterAt(p.xz) - 0.5 * uPpf ? 1.0 : 0.0;   // under the open sky (not under a higher floor or a dry region)
+      float outd = p.y >= shelterAt(p.xz) - 0.5 * uPpf && !isCeil ? 1.0 : 0.0;   // under the open sky (not under a higher floor or a dry region)
       if (!side && !cut && outd > 0.0) {
         if (uWx == 1) {
           // wet ground: darker, with rain rings spreading in puddles (faded out where a pixel covers too much floor)
@@ -871,7 +942,7 @@ void main(){
     }
     if (uMood > 0.5) col = mix(col, glowCol * uTrimK, glow);
     col += emit * (uMood > 0.5 ? max(uTrimK, 1.0) : 1.0);
-    if (uTplN > 0) {   // spell templates: a tint over the area, a glowing edge
+    if (uTplN > 0 && !isCeil) {   // spell templates: a tint over the area, a glowing edge
       vec2 tp = tplAt(p.xz, pxFt * uPpf);
       if (tp.x > 0.0) col = mix(col, tplCol * max(dot(col, vec3(0.33)) * 1.8, 0.4), 0.45) + tplCol * tp.y * 1.2;
     }
@@ -1227,6 +1298,16 @@ export class PovRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.tex.slab = slt; this.slabOn = !!world.hasSlabs;
+    // rooms' ceilings: which height (1..8) per point, and which slabs are a room's ceiling
+    if (this.tex.ceil) gl.deleteTexture(this.tex.ceil);
+    const cn = world.hw * world.hh, cd = new Uint8Array(cn * 2), CH = world.ceilHeights ?? [];
+    if (CH.length && world.ceilData) for (let k = 0; k < cn; k++) { const v = world.ceilData[k]; if (v > -0.5) cd[k * 2] = CH.indexOf(v) + 1; }
+    if (world.slabCeil) for (let k = 0; k < cn; k++) if (world.slabCeil[k]) cd[k * 2 + 1] = 255;
+    const ct = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, ct); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, world.hw, world.hh, 0, gl.RG, gl.UNSIGNED_BYTE, cd);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.tex.ceil = ct; this.ceilH = CH.slice(0, 8);
     // raised areas that look like something: look / front / region per pixel, a box and picture per region
     for (const k of ["propData", "propInfo", "propPic"]) if (this.tex[k]) gl.deleteTexture(this.tex[k]);
     const nn = (t) => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -1360,6 +1441,10 @@ export class PovRenderer {
       if (!this.tex.vis) { this.setVision(new Uint8Array([255, 255, 0, 255]), 1, 1); this.visOn = false; }
       this._bindTex(10, this.tex.vis, u.uVis); gl.uniform1f(u.uVisOn ?? null, this.visOn && !opts.noVision ? 1 : 0);
       this._bindTex(11, this.tex.slab, u.uSlab); gl.uniform1f(u.uSlabOn ?? null, this.slabOn ? 1 : 0);
+      this._bindTex(12, this.tex.ceil, u.uCeil);
+      const CH = opts.noCeilings ? [] : (this.ceilH ?? []);
+      gl.uniform1i(u.uCeilN ?? null, CH.length);
+      gl.uniform1f(u.uCeilSun ?? null, CH.length && cam.pos[1] / W.ppf < Math.max(...CH) ? 1 : 0); if (u.uCeilH) gl.uniform1fv(u.uCeilH, new Float32Array([...CH, 0, 0, 0, 0, 0, 0, 0, 0].slice(0, 8)));
       this._bindTex(9, this.tex.tpl, u.uTpl); gl.uniform1i(u.uTplN ?? null, this.tplN ?? 0);
       const BM = (opts.beams ?? []).slice(0, 4), BA = new Float32Array(16), BB = new Float32Array(16), BC = new Float32Array(16);
       BM.forEach((b, i) => { BA.set([...b.from, 0], i * 4); BB.set([...b.to, 0], i * 4); BC.set([...b.color, 1], i * 4); });
