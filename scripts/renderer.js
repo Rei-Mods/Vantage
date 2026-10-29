@@ -708,8 +708,10 @@ void main(){
     // a wall face: take the top height of the column we hit for the trim/shading reference
     vec2 inward = length(g) > 1e-6 ? normalize(g) : vec2(0.0);
     if (side) { hb = max(hb, hAt(p.xz + inward * texel * 1.5)); kd = kindAt(p.xz + inward * texel * 1.0); }
-    ivec4 pd = ivec4(0);
-    if (side && kd == 5) pd = ivec4(texelFetch(uPropData, ivec2(clamp((p.xz + inward * texel) / uWorld * uHRes, vec2(0.0), uHRes - 1.0)), 0) * 255.0 + 0.5);
+    // per point: a raised area's look / front / region (rgb) and a region's own wall skin (a, 0 = the scene's)
+    ivec4 pd = ivec4(texelFetch(uPropData, ivec2(clamp((p.xz + (side ? inward * texel : vec2(0.0))) / uWorld * uHRes, vec2(0.0), uHRes - 1.0)), 0) * 255.0 + 0.5);
+    if (!(side && kd == 5)) pd.xyz = ivec3(0);
+    int sk = pd.w > 0 ? pd.w - 1 : uSkin;
     vec3 emit = vec3(0.0);   // self-lit bits of props (screens, LEDs): added after the light
     vec2 n2 = length(g) > 1e-4 ? normalize(-g) : -normalize(d.xz + 1e-5);
     if (sf == 3) n2 = en;
@@ -734,7 +736,7 @@ void main(){
         vec3 tn = normalize(vec3(-g.x / (2.0 * e), 1.0, -g.y / (2.0 * e)));
         col *= 0.55 + 0.55 * clamp(dot(tn, normalize(vec3(0.35, 0.8, -0.45))), 0.0, 1.0);
       }
-      else if ((kd == 2 || kd == 3) && uSkin != 0) col = mix(skinTop(uSkin, p.xz, uv), col, 0.2);   // wall tops wear the skin
+      else if ((kd == 2 || kd == 3) && sk != 0) col = mix(skinTop(sk, p.xz, uv), col, 0.2);   // wall tops wear the skin
       // token bases: soft contact shadow + coloured ring
       for (int s = 0; s < ${MAX_STANDEES}; s++) {
         if (s >= uNS) break;
@@ -789,7 +791,7 @@ void main(){
           }
         }
         if (dt < 0.1) col = mix(col, textureLod(uFloor, uv, 1.0).rgb, 0.5);   // the top's lip
-      } else if (kd == 5 && raisedSkin(uSkin) == 0) {
+      } else if (kd == 5 && raisedSkin(sk) == 0) {
         // raised area (crate, console, dais): plain dark metal, a soft lighter lip at the top, no glow trim
         // the top's own colour tints the metal a little, darker toward the foot; panel seams every 2 ft and down the sides
         col = mix(vec3(0.15, 0.17, 0.20), textureLod(uFloor, uv, 6.5).rgb, 0.3) * (0.62 + 0.38 * rel);
@@ -798,7 +800,7 @@ void main(){
         if (abs(mod(fu, 3.0) - 1.5) > 1.44) col *= 0.8;
       } else if (kd == 5) {
         // raised areas in a skinned scene are built of the same material, with the top's art showing at the lip
-        col = wallSkin(raisedSkin(uSkin), fu, p.y / uPpf, dt, foot, uv, p.xz, n2, false, pxFt) * (0.62 + 0.38 * rel);
+        col = wallSkin(raisedSkin(sk), fu, p.y / uPpf, dt, foot, uv, p.xz, n2, false, pxFt) * (0.62 + 0.38 * rel);
         if (dt < 0.12) col = mix(col, textureLod(uFloor, uv, 1.0).rgb, 0.6) * 1.2;
       } else if (kd == 6) {
         // height-map terrain: the map art carries down the slope
@@ -810,14 +812,14 @@ void main(){
       } else if ((kd == 3 || kd == 2) && uHoverCol.a > 1.5 && distance(p.xz, uHover.xy) < uHover.z && p.y < uHover.w + 10.5 * uPpf) {
         // the door under the mouse lights up
         col = mix(base, uHoverCol.rgb, 0.45); glow = 0.35; glowCol = uHoverCol.rgb;
-      } else if (uSkin == 0) {
+      } else if (sk == 0) {
         // neon panels: dark metal, panel seams, a glowing trim strip under the top, doors tinted teal
         bool seam = abs(mod(p.y / uPpf, 4.0) - 2.0) > 1.85 || abs(mod(fu, 5.0) - 2.5) > 2.42;
         if (seam) col *= 0.45;
         if (kd == 3) col = mix(col, vec3(0.12, 0.45, 0.55), 0.6);
         if (dt > 0.6 && dt < 1.1) glow = 1.0;
       } else {
-        col = wallSkin(uSkin, fu, p.y / uPpf, dt, foot, uv, p.xz, n2, kd == 3, pxFt) * (0.55 + 0.45 * rel);
+        col = wallSkin(sk, fu, p.y / uPpf, dt, foot, uv, p.xz, n2, kd == 3, pxFt) * (0.55 + 0.45 * rel);
       }
     }
     if (sf == 2) { col = textureLod(uFloor, uv, 6.0).rgb * 0.3 + vec3(0.045, 0.04, 0.035); glow = 0.0; }   // the underside of a deck or ceiling

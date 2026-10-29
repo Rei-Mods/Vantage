@@ -1,5 +1,5 @@
 // Vantage - camera + scene state around one renderer (used by the GM window and the players' live view)
-import {PovRenderer} from "./renderer.js";
+import {PovRenderer, WALL_SKINS} from "./renderer.js";
 import {buildWorld, buildStandees, floorAt, heightAt, coverAt, standAt, playFloor, floorFrame, KIND} from "./world.js";
 
 const hash1 = x => { const s = Math.sin(x * 127.1 + 1.7) * 43758.5453; return s - Math.floor(s); };
@@ -72,7 +72,7 @@ export class PovView {
     const key = PovView.key(sceneData, buildOpts);
     let world = this.cache.get(key);
     if (world) this.cache.delete(key);
-    else world = await buildWorld(sceneData, {...buildOpts, maxTex: this.r.maxTex});
+    else world = await buildWorld(sceneData, {...buildOpts, maxTex: this.r.maxTex, skins: WALL_SKINS});
     this.cache.set(key, world);
     while (this.cache.size > 2) this.cache.delete(this.cache.keys().next().value);
     this.world = world;

@@ -367,10 +367,16 @@ export async function buildWorld(data, opts = {}) {
       if (u < lo) lo = u; if (u > hi) hi = u; if (f < flo) flo = f; if (f > fhi) fhi = f;
     }
     const g = Math.round(((az % 360) + 360) % 360 / 360 * 256) & 255;
-    for (const k of pr.px) { propData[k * 4] = pr.look; propData[k * 4 + 1] = g; propData[k * 4 + 2] = ri + 1; propData[k * 4 + 3] = 255; }
+    for (const k of pr.px) { propData[k * 4] = pr.look; propData[k * 4 + 1] = g; propData[k * 4 + 2] = ri + 1; }
     let pic = -1;
     if (pr.pic) { const img = await loadImageLike(pr.pic); if (img) { pic = propPics.length; propPics.push(img); } }
     propInfo.push({lo, w: Math.max(1, hi - lo), flo, fd: Math.max(1, fhi - flo), pic, seed: (ri * 0.618) % 1, az});
+  }
+  // regions with their own wall skin: the walls (and raised areas) inside wear it (alpha = skin + 1)
+  for (const rg of data.regions ?? []) {
+    const si = rg.skin ? (o.skins ?? []).indexOf(rg.skin) : -1;
+    if (si < 0 || !rg.polys?.length) continue;
+    for (const k of rasterPolys(rg.polys, data, hs, hw, hh)) propData[k * 4 + 3] = si + 1;
   }
   // front pictures in one atlas (portrait cells)
   let propAtlas = null;

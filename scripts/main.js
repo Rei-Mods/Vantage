@@ -37,6 +37,7 @@ Hooks.once("init", () => {
     onChange: () => PovWindow.instance?.requestRender()}, "client");
   reg("blurMoving", {type: Boolean, default: true, onChange: () => PovWindow.instance?.requestRender()}, "client");
   reg("animate", {type: Boolean, default: true, onChange: () => PovWindow.instance?.requestRender()}, "client");
+  reg("sound3d", {type: Boolean, default: true}, "client");
 });
 
 function shadowOpts() { const sh = game.settings.get(MOD, "shadows"); return {shadowN: sh === "full" ? 4 : 0, ao: sh === "off" ? 0 : 1}; }
@@ -75,6 +76,10 @@ Hooks.on("renderRegionConfig", (app, html) => {
     <div class="form-group"><label>${L("Region.Under")}</label>
       <div class="form-fields"><input type="number" name="flags.${MOD}.under" step="0.5" min="0" max="60" value="${Number.isFinite(f.under) ? f.under : ""}" placeholder="${escA(L("Region.UnderPlaceholder"))}"></div>
       <p class="hint">${L("Region.UnderHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Region.Skin")}</label>
+      <div class="form-fields"><select name="flags.${MOD}.skin"><option value="">${escA(L("Region.SkinScene"))}</option>${WALL_SKINS.map(k => `<option value="${k}" ${k === (f.skin ?? "") ? "selected" : ""}>${escA(L(`Skins.${k}`))}</option>`).join("")}</select></div>
+      <p class="hint">${L("Region.SkinHint")}</p>
     </div>
     <div class="form-group"><label>${L("Region.Look")}</label>
       <div class="form-fields"><select name="flags.${MOD}.look">${PROP_LOOKS.map(k => `<option value="${k}" ${k === look ? "selected" : ""}>${escA(L(`Looks.${k}`))}</option>`).join("")}</select></div>

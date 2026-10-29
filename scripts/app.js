@@ -1,5 +1,6 @@
 // Vantage - the GM's 3D window, the players' viewer, and snapshot/live sharing
 import {PovView, camAt} from "./view.js";
+import {followCamera, release as releaseSound} from "./sound.js";
 import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf, sceneFlag, weatherOf, rectOf, templatesOf, visionMask} from "./foundry.js";
 import {WEATHER} from "./renderer.js";
 const LOOK_KEYS = ["wallSkin", "mood", "sunAz", "lightColor", "weather", "path"];
@@ -573,6 +574,7 @@ export class PovWindow extends ApplicationV2 {
       }
       sizeCanvas(this.canvasEl, this.stage, this.quality(this._moving));
       this.view.render();
+      followCamera(this.view, this.scene, this);   // ambient sounds heard from the camera
       if (this.live && !this.playing) this.broadcastLive();
       if (k.size || anim || this.view.isMoving()) this._raf = requestAnimationFrame(tick);
     };
@@ -643,7 +645,7 @@ export class PovWindow extends ApplicationV2 {
   }
 
   async close(options) {
-    this.stopRecord(); this.playing = null;
+    this.stopRecord(); this.playing = null; releaseSound(this);
     if (this.live) emit({t: "live-end", from: game.user.id});
     this.live = false;
     for (const [h, id] of this.hooks) Hooks.off(h, id);
@@ -774,6 +776,7 @@ export class PovViewer extends ApplicationV2 {
       }
       sizeCanvas(this.canvasEl, this.stage, Math.min(0.75, Number(setting("quality")) || 0.75));
       this.view.render({forPlayers: true});
+      followCamera(this.view, game.scenes.get(this.liveScene), this);
       const t = this.element?.querySelector(".window-title"); if (t) t.textContent = this.title;
       if (cutOn) this._raf = requestAnimationFrame(frame);
       else if (anim) this._tmo = setTimeout(() => { this._tmo = null; this._raf = requestAnimationFrame(frame); }, 30);   // ~30 fps while something animates
@@ -800,7 +803,7 @@ export class PovViewer extends ApplicationV2 {
     this.applyLive(this.lastLive);
   }
 
-  stopLive() { clearTimeout(this._tmo); cancelAnimationFrame(this._raf); this._tmo = this._raf = null; this.ro?.disconnect(); this.ro = null; this.view?.play(false); this.view?.dispose(); this.view = null; this.liveScene = null; }
+  stopLive() { releaseSound(this); clearTimeout(this._tmo); cancelAnimationFrame(this._raf); this._tmo = this._raf = null; this.ro?.disconnect(); this.ro = null; this.view?.play(false); this.view?.dispose(); this.view = null; this.liveScene = null; }
 
   async close(options) { this.stopLive(); PovViewer.instance = null; return super.close(options); }
 }

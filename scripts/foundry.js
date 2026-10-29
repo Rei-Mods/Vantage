@@ -64,14 +64,16 @@ export function regionsOf(scene) {
     const dry = on(["suppressWeather", "fxmaster.suppressSceneParticles"]);   // no rain or snow falls here
     const raise = Number(r.flags?.[MOD]?.raise);
     const raised = Number.isFinite(raise) && Math.abs(raise) >= 0.1;
-    if (!stairs && !raised && !dry) continue;
+    const skin = r.flags?.[MOD]?.skin || null;   // its own wall skin
+    if (!stairs && !raised && !dry && !skin) continue;
     let polys = [];
     try { polys = (r.polygons ?? []).map(p => [...p.points]); } catch (e) { /* fall back to the shapes */ }
     if (!polys.length) polys = (r.shapes ?? []).filter(s => !s.hole).map(shapePoly).filter(p => p.length >= 6);
     const f = r.flags?.[MOD] ?? {};
     out.push({id: r.id, name: r.name, stairs: stairs && !raised, raise: raised ? raise : null, dry, levels: [...(r.levels ?? [])], polys,
       look: f.look || null, front: f.front ?? null, pic: f.pic || null,   // what a raised area looks like from the side
-      under: Number.isFinite(Number(f.under)) && f.under !== "" && f.under !== null ? Number(f.under) : null});   // its underside: a bridge, a roof
+      under: Number.isFinite(Number(f.under)) && f.under !== "" && f.under !== null ? Number(f.under) : null,   // its underside: a bridge, a roof
+      skin});
   }
   return out;
 }

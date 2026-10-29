@@ -102,6 +102,10 @@
       "animate": {
         "Name": "Animate the 3D view",
         "Hint": "On = video maps play, animated lights flicker and pulse, and weather moves (about 30 frames a second while anything moves). Off = a still picture, lighter on slow computers."
+      },
+      "sound3d": {
+        "Name": "3D sound",
+        "Hint": "While the 3D view is open on the scene you're on, its ambient sounds are heard from the camera (louder as you walk toward them, with Foundry's walls and muffling) and panned left and right by where they are around you."
       }
     },
     "Figures": {
@@ -130,7 +134,10 @@
       "FrontBottom": "Bottom of the map",
       "FrontLeft": "Left",
       "Pic": "Front picture",
-      "PicHint": "Optional: an image (a cabinet front, a shop sign, a door) drawn on the front face, top to bottom. Transparent parts show the look underneath."
+      "PicHint": "Optional: an image (a cabinet front, a shop sign, a door) drawn on the front face, top to bottom. Transparent parts show the look underneath.",
+      "Skin": "Wall skin here",
+      "SkinScene": "The scene's skin",
+      "SkinHint": "Walls (and raised areas) inside this region wear this skin: a brick building on a neon street, a wooden cabin in a stone keep. It works with or without a height."
     },
     "Token": {
       "Legend": "Vantage 3D figure",

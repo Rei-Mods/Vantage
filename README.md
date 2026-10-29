@@ -70,6 +70,8 @@ Set a default in the world settings, and give any scene its own skin in **Scene 
 
 <p align="center"><img src="docs/images/wall-skins.jpg" width="100%" alt="The same arcade corner with each of the 12 wall skins, labelled"></p>
 
+**Per region**: a Region's **Wall skin here** (Region Config → Vantage) dresses the walls inside it differently, so a brick building can stand on a neon street, or a wooden cabin inside a stone keep.
+
 ### Lighting moods: match the map's vibe
 <p align="center"><img src="docs/images/lighting-moods.gif" width="80%" alt="A canyon base cycling through bright sun, golden hour, synthwave sunset, moonlight, aurora night, fey twilight, blood moon, under the sea, holy light and hellfire"></p>
 
@@ -298,12 +300,13 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 | 3D view resolution | Balanced | Full / Balanced / Fast. |
 | Lower resolution while moving | On | Half resolution while the camera moves (smooth on slow computers, slightly blurry while moving). Turn off for an always-sharp picture. |
 | Animate the 3D view | On | Video maps play, animated lights flicker and pulse, weather moves. Off = a still picture (lighter on slow computers). |
+| 3D sound | On | While the 3D view is open on the scene you're on, ambient sounds are heard from the camera (louder as you get close, Foundry's walls and muffling still apply) and panned left / right. |
 
 ### Per scene, region and token
 | Where | Field | Flag |
 |---|---|---|
 | Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock; Wall skin; Lighting mood; Light colour; Weather; Sun direction (degrees, 0 = top of the map) | `flags.vantage.heightMax`, `flags.vantage.raiseDark`, `flags.vantage.wallSkin`, `flags.vantage.mood`, `flags.vantage.lightColor`, `flags.vantage.weather`, `flags.vantage.sunAz` |
-| Region Config → Placement → Vantage | Height (ft), negative = pit; Underside (ft); Looks like; Front faces; Front picture | `flags.vantage.raise`, `flags.vantage.under`, `flags.vantage.look`, `flags.vantage.front` (degrees, empty = automatic), `flags.vantage.pic` |
+| Region Config → Placement → Vantage | Height (ft), negative = pit; Underside (ft); Wall skin here; Looks like; Front faces; Front picture | `flags.vantage.raise`, `flags.vantage.under`, `flags.vantage.skin`, `flags.vantage.look`, `flags.vantage.front` (degrees, empty = automatic), `flags.vantage.pic` |
 | Token / Prototype Token Config → Appearance → Vantage 3D figure | Figure, 3D picture | `flags.vantage.figure`, `flags.vantage.standee` |
 | (token or actor flag) | Lie flat like an object | `flags.vantage.flat` |
 
