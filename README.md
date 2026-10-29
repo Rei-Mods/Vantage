@@ -336,7 +336,7 @@ Its picture is half-body art. Give the token a full-body *3D picture* in *Token 
 
 <details><summary><b>Can players see things they shouldn't?</b></summary>
 
-Hidden tokens are never shown to players. Players who open the view themselves (if you allow it) see only the tokens they can see, but the 3D view ignores fog of war.
+Hidden tokens are never shown to players. Players' Live views (and windows, if you let them open it) show only the tokens they can see and, with *Players' 3D views follow their sight* on (the default), only the places their tokens can see; explored places stay dim grey, the rest is dark, like fog of war on the map.
 </details>
 
 <details><summary><b>The walls look sci-fi on my fantasy map</b></summary>
