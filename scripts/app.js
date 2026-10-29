@@ -1,6 +1,6 @@
 // Vantage - the GM's 3D window, the players' viewer, and snapshot/live sharing
 import {PovView} from "./view.js";
-import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf, sceneFlag, weatherOf, rectOf} from "./foundry.js";
+import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf, sceneFlag, weatherOf, rectOf, templatesOf} from "./foundry.js";
 import {WEATHER} from "./renderer.js";
 const LOOK_KEYS = ["wallSkin", "mood", "sunAz", "lightColor", "weather"];
 
@@ -42,7 +42,10 @@ async function prepareView(view, scene, viewLevel, {playerView = false, maxBotto
   await view.load(sceneData(scene, viewLevel), {...buildOptions(scene), maxBottom});
   await view.setTokens(tokensOf(scene, {playerView}));
   view.setLights(lightsOf(scene));
+  view.setTemplates(templatesOf(scene, {playerView}));
 }
+const COVER_COL = [[0.3, 1.0, 0.45], [1.0, 0.85, 0.2], [1.0, 0.45, 0.1], [1.0, 0.15, 0.15]];
+const COVER_KEY = ["Cover.none", "Cover.half", "Cover.three", "Cover.full"];
 
 function sizeCanvas(canvasEl, stage, scale) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -102,6 +105,7 @@ export class PovWindow extends ApplicationV2 {
         <select class="vtg-weather" data-tooltip="${L("Window.WeatherTitle")}"></select>` : ""}
         <button type="button" data-a="rebuild" title="${L("Window.RebuildTitle")}"><i class="fa-solid fa-rotate"></i></button>
       </div>
+      <div class="vtg-cover" style="display:none"></div>
       <div class="vtg-help">${L("Window.Help")}</div>
     </div>`;
   }
@@ -156,7 +160,7 @@ export class PovWindow extends ApplicationV2 {
     this.view.clearCache();   // the scene changed: cached levels are stale
     await this.build(this.viewLevel, this.maxBottom);
     this.view.cam = cam; this.view.selfId = self;
-    this._busy = false; this.requestRender();
+    this._busy = false; this.refreshCover(); this.requestRender();
   }
 
   /** the "ceiling" setting this token needs: its elevation when a higher floor covers it, else null */
@@ -195,6 +199,7 @@ export class PovWindow extends ApplicationV2 {
       }
     }
     this.fillTokenSelect();
+    this.refreshCover();
     this.requestRender();
   }
 
@@ -242,7 +247,20 @@ export class PovWindow extends ApplicationV2 {
       this.view.cam.dist = Math.max(60, Math.min(220, W.W / W.ppf * 0.6));
     }
     this.view.cam.mode = mode;
-    this.fillTokenSelect(); this.updateButtons();
+    this.fillTokenSelect(); this.updateButtons(); this.refreshCover();
+    this.requestRender();
+  }
+
+  // ---------------------------------------------------------------- cover
+  /** cover from the picked token to each of your targets: a line to each, coloured, and a note in the corner */
+  refreshCover() {
+    const v = this.view, box = this.stage?.querySelector(".vtg-cover"); if (!v?.world || !box) return;
+    const me = v.selfId;
+    const targets = [...(game.user.targets ?? [])].filter(t => t.document?.parent?.id === this.scene.id && t.id !== me).slice(0, 4);
+    const out = me ? targets.map(t => ({t, c: v.cover(me, t.id)})).filter(x => x.c) : [];
+    v.beams = out.map(({c}) => ({from: c.from, to: c.to, color: COVER_COL[c.level]}));
+    box.style.display = out.length ? "" : "none";
+    box.innerHTML = out.map(({t, c}) => `<div><span class="vtg-dot" style="background:rgb(${COVER_COL[c.level].map(x => Math.round(x * 255)).join(",")})"></span>${esc(t.name)}: ${esc(L(COVER_KEY[c.level]))}</div>`).join("");
     this.requestRender();
   }
 
@@ -287,7 +305,7 @@ export class PovWindow extends ApplicationV2 {
     const doc = this.scene.tokens.get(id); if (!doc) return;
     if (canvas.scene?.id === this.scene.id && (doc.isOwner || game.user.isGM)) doc.object?.control({releaseOthers: true});
     if (this.view.cam.mode === "orbit") this.view.selfId = id;
-    this.fillTokenSelect(); this.requestRender();
+    this.fillTokenSelect(); this.refreshCover(); this.requestRender();
   }
   toggleTarget(id, keep) {
     const t = this.scene.tokens.get(id)?.object;
@@ -507,6 +525,8 @@ export class PovWindow extends ApplicationV2 {
     const on = (h, fn) => this.hooks.push([h, Hooks.on(h, fn)]);
     const mine = doc => { let d = doc.parent ?? doc.scene; while (d && d.documentName !== "Scene") d = d.parent; return d?.id === this.scene.id; };   // region behaviours sit under a region
     for (const h of ["createToken", "updateToken", "deleteToken"]) on(h, doc => { if (mine(doc)) this._tokensSoon(); });
+    for (const h of ["createMeasuredTemplate", "updateMeasuredTemplate", "deleteMeasuredTemplate"])
+      on(h, doc => { if (mine(doc) && this.view?.world) { this.view.setTemplates(templatesOf(this.scene, {playerView: !game.user.isGM})); this.requestRender(); } });
     on("targetToken", (user, token) => { if (user.id === game.user.id && token.document?.parent?.id === this.scene.id) this._tokensSoon(); });
     for (const h of ["createWall", "updateWall", "deleteWall", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createLevel", "updateLevel", "deleteLevel",
       "createRegion", "updateRegion", "deleteRegion", "createRegionBehavior", "updateRegionBehavior", "deleteRegionBehavior"])

@@ -109,10 +109,61 @@ export class PovView {
     });
   }
 
+  /** spell templates (foundry.templatesOf): drawn on the floor where they are, round ones as a dome */
+  setTemplates(list) {
+    const W = this.world; if (!W) return;
+    this.templates = list ?? [];
+    this.r.setTemplates(this.templates.map(t => ({...t, z: t.y, base: Math.max(t.elevation ?? 0, standAt(W, t.x, t.y, t.elevation ?? 0) ?? floorAt(W, t.x, t.y)) * W.ppf})));
+  }
+
+  // ---------------------------------------------------------------- cover
+  /** what's between a point and another (px): 0 = clear, 1 = walls / rock / raised areas, 2 = another figure */
+  blocked(o, p, skip = []) {
+    const W = this.world, hs = W.hs, hd = W.heightData, ppf = W.ppf, g = W.gridPx;
+    const d = [p[0] - o[0], p[1] - o[1], p[2] - o[2]], L = Math.hypot(...d); if (L < 1) return 0;
+    for (let t = 0.3 * g; t < L - 0.3 * g; t += 0.5 / hs) {
+      const x = o[0] + d[0] * t / L, y = o[1] + d[1] * t / L, z = o[2] + d[2] * t / L;
+      const xi = Math.floor(x * hs), zi = Math.floor(z * hs);
+      if (xi < 0 || zi < 0 || xi >= W.hw || zi >= W.hh) continue;
+      if (y < hd[(zi * W.hw + xi) * 2] * ppf) return 1;
+    }
+    const dd = d[0] * d[0] + d[2] * d[2] || 1;
+    for (const s of this.standees) {
+      if (skip.includes(s.id) || s.flat || (s.hidden && !this._showHidden)) continue;
+      const tt = Math.max(0, Math.min(1, ((s.x - o[0]) * d[0] + (s.z - o[2]) * d[2]) / dd));
+      const x = o[0] + d[0] * tt, y = o[1] + d[1] * tt, z = o[2] + d[2] * tt;
+      if (Math.hypot(x - s.x, z - s.z) < (s.ring || 0.47 * g) * 0.7 && y > s.y && y < s.y + s.h) return 2;
+    }
+    return 0;
+  }
+  /** cover of one token from another (D&D style): 0 none, 1 half, 2 three-quarters, 3 full; from the attacker's best
+   *  spot in its square to 9 points over the target's body */
+  cover(fromId, toId) {
+    const W = this.world; if (!W) return null;
+    const a = this.standees.find(s => s.id === fromId), b = this.standees.find(s => s.id === toId);
+    if (!a || !b) return null;
+    const g = W.gridPx, ppf = W.ppf, dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1;
+    const fw = [dx / L, dz / L], sd = [-fw[1], fw[0]];
+    const eye = a.y + (a.flat ? 3 * ppf : Math.min(a.h * 0.85, 5.5 * ppf));
+    const rA = (a.ring || 0.47 * g) * 0.8, rB = (b.ring || 0.47 * g) * 0.6, hB = b.flat ? 3 * ppf : b.h;
+    const origins = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].map(([u, v]) => [a.x + (sd[0] * u + fw[0] * v) * rA, eye, a.z + (sd[1] * u + fw[1] * v) * rA]);
+    const pts = []; for (const k of [0.2, 0.5, 0.85]) for (const s of [-1, 0, 1]) pts.push([b.x + sd[0] * s * rB, b.y + hB * k, b.z + sd[1] * s * rB]);
+    let best = null;
+    for (const o of origins) {
+      let wall = 0, crea = 0;
+      for (const p of pts) { const r = this.blocked(o, p, [a.id, b.id]); if (r === 1) wall++; else if (r === 2) crea++; }
+      const k = {wall: wall / pts.length, crea: crea / pts.length, o};
+      if (!best || k.wall + 0.5 * k.crea < best.wall + 0.5 * best.crea) best = k;
+    }
+    const f = best.wall;
+    const level = f > 0.99 ? 3 : f >= 0.75 ? 2 : (f >= 0.5 || best.crea >= 0.3 || f + best.crea >= 0.5) ? 1 : 0;
+    return {level, wall: f, creature: best.crea, from: best.o, to: [b.x, b.y + hB * 0.5, b.z]};
+  }
+
   /** anything that changes by itself (video map art, animated lights, weather): the window keeps drawing while true */
   isAnimated() {
     const W = this.world; if (!W) return false;
-    return !!(W.hasVideo || this.lights.some(l => l.anim) || (this.opts.weather && this.opts.weather !== "none"));
+    return !!(W.hasVideo || this.lights.some(l => l.anim) || (this.opts.weather && this.opts.weather !== "none") || this.beams?.length);
   }
   /** start/stop video map art */
   play(on) { playFloor(this.world, on); }
@@ -232,7 +283,7 @@ export class PovView {
     // haze starts behind what an overview looks at, so a far-away overview isn't murky
     const fogStart = this.cam.mode === "orbit" ? this.cam.dist * 0.8 : 0;
     this._cut = cut; this._showHidden = showHidden;
-    this.r.render(v, lights, st, {fogStart, ...this.opts, time: live ? t : 0, flash: live ? flashAt(t) : 0, hover: forPlayers ? null : this.hover ?? null, ...cut});
+    this.r.render(v, lights, st, {fogStart, ...this.opts, time: live ? t : 0, flash: live ? flashAt(t) : 0, hover: forPlayers ? null : this.hover ?? null, beams: forPlayers ? [] : this.beams ?? [], ...cut});
   }
 
   // ---------------------------------------------------------------- picking (play in 3D)

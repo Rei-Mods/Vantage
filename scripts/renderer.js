@@ -25,7 +25,9 @@ uniform vec4 uLPos[${MAX_LIGHTS}], uLCol[${MAX_LIGHTS}];
 uniform int uWx; uniform vec3 uWxVel, uWxCol, uWxMistCol; uniform vec4 uWxP, uWxQ; uniform float uWxFlash, uWxMist, uWxGround, uWxTop;
 uniform sampler2D uShelter;
 uniform vec4 uHover, uHoverCol;
-uniform sampler2D uPropData, uPropInfo, uPropPic;   // raised areas that look like something: per pixel look / front / region; per region box + picture   // what the mouse points at: x, z, radius, height (px); colour, 1 = ring on the floor / 2 = a door   // ft: weather only falls above this (higher floors over the view, "suppress weather" regions)
+uniform sampler2D uPropData, uPropInfo, uPropPic;
+uniform sampler2D uTpl; uniform int uTplN;          // spell templates: per template (x, z, length, type) (direction, half angle / width, base height) (colour)
+uniform vec4 uBeamA[4], uBeamB[4], uBeamC[4]; uniform int uBeamN;   // cover lines: from, to, colour   // raised areas that look like something: per pixel look / front / region; per region box + picture   // what the mouse points at: x, z, radius, height (px); colour, 1 = ring on the floor / 2 = a door   // ft: weather only falls above this (higher floors over the view, "suppress weather" regions)
 uniform vec4 uSPos[${MAX_STANDEES}], uSUV[${MAX_STANDEES}], uSInfo[${MAX_STANDEES}], uSTint[${MAX_STANDEES}], uSRing[${MAX_STANDEES}];
 
 float hAt(vec2 xz){
@@ -299,6 +301,29 @@ vec3 skinTop(int sk, vec2 xz, vec2 uv){
 // face 0 = the front, 1 = a side, 2 = the back; U = 0..1 across the front (left to right as you face it), Uf = ft along the
 // face, Y = ft over the floor, H = height (ft), W = width of the front (ft); tc = the top's colour, edge = the art at the top's
 // edge; writes the self-lit part (screens, LEDs, neon) to gEmit
+// ---------------------------------------------------------------- spell templates
+// how much of a template covers a point of the map: fill (0/1) and the glowing edge (0..1); colour in tplCol
+vec3 tplCol;
+vec2 tplAt(vec2 xz, float pxw){
+  vec2 r = vec2(0.0); tplCol = vec3(0.0);
+  for (int i = 0; i < 16; i++) {
+    if (i >= uTplN) break;
+    vec4 a = texelFetch(uTpl, ivec2(i, 0), 0), b = texelFetch(uTpl, ivec2(i, 1), 0);
+    vec2 d = xz - a.xy, dir = vec2(cos(b.x), sin(b.x));
+    vec2 loc = vec2(dot(d, dir), dot(d, vec2(-dir.y, dir.x)));
+    int ty = int(a.w + 0.5); float R = a.z, e = -1.0;   // e: how far inside the edge (px)
+    if (ty == 1) e = R - length(d);                                                         // circle
+    else if (ty == 2) e = min(R - length(d), (b.y - abs(atan(loc.y, loc.x))) * length(d));  // cone
+    else if (ty == 4) e = min(min(loc.x, R - loc.x), b.y * 0.5 - abs(loc.y));              // ray / line
+    else if (ty == 3) { vec2 q = a.xy + dir * R, lo = min(a.xy, q), hi = max(a.xy, q); e = min(min(xz.x - lo.x, hi.x - xz.x), min(xz.y - lo.y, hi.y - xz.y)); }   // rectangle
+    if (e < 0.0) continue;
+    float edge = 1.0 - smoothstep(0.0, max(pxw * 2.0, 0.3 * uPpf), e);
+    if (edge >= r.y) tplCol = texelFetch(uTpl, ivec2(i, 2), 0).rgb;
+    r = max(r, vec2(1.0, edge));
+  }
+  return r;
+}
+
 vec3 gEmit;
 vec3 hue3(float h){ return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0); }
 vec3 propFace(int L, int face, float U, float Uf, float Y, float H, float W, vec3 tc, vec3 edge, float px, float seed){
@@ -673,6 +698,10 @@ void main(){
     }
     if (uMood > 0.5) col = mix(col, glowCol * uTrimK, glow);
     col += emit * (uMood > 0.5 ? max(uTrimK, 1.0) : 1.0);
+    if (uTplN > 0) {   // spell templates: a tint over the area, a glowing edge
+      vec2 tp = tplAt(p.xz, pxFt * uPpf);
+      if (tp.x > 0.0) col = mix(col, tplCol * max(dot(col, vec3(0.33)) * 1.8, 0.4), 0.45) + tplCol * tp.y * 1.2;
+    }
     if (uAO > 0.0 && !cut) col *= mix(1.0, side ? aoSide(p, n2, texel) : aoFloor(p, t), uAO * 0.85);
     float fog = 1.0 - exp(-max(t - uFogStart * uPpf, 0.0) / (uFogFt * uPpf));
     col = mix(col, uFogCol, fog);
@@ -742,6 +771,34 @@ void main(){
       }
       col = col * (1.0 - wa.a) + wa.rgb * lit + wxEm;
     }
+  }
+  // round templates rise as a dome (a sphere of effect): a faint shell, brighter at its rim
+  for (int i = 0; i < 16; i++) {
+    if (i >= uTplN) break;
+    vec4 a = texelFetch(uTpl, ivec2(i, 0), 0);
+    if (int(a.w + 0.5) != 1) continue;
+    vec4 b = texelFetch(uTpl, ivec2(i, 1), 0);
+    vec3 C = vec3(a.x, b.z, a.y), oc = o - C; float R = a.z, bb = dot(oc, d), h = bb * bb - (dot(oc, oc) - R * R);
+    if (h <= 0.0) continue;
+    float sq = sqrt(h), t1 = -bb - sq, t2 = -bb + sq;
+    for (int k = 0; k < 2; k++) {   // the near and far side of the shell
+      float ts = k == 0 ? t1 : t2;
+      if (ts <= 0.0 || ts >= tOcc) continue;
+      vec3 P = o + d * ts; if (P.y < C.y) continue;
+      float fr = pow(1.0 - abs(dot((P - C) / R, d)), 3.0);
+      col += texelFetch(uTpl, ivec2(i, 2), 0).rgb * (0.05 + 0.45 * fr) * (k == 0 ? 1.0 : 0.6);
+    }
+  }
+  // cover lines: from the picked token to its targets, coloured by the cover (dashes run toward the target)
+  for (int i = 0; i < 4; i++) {
+    if (i >= uBeamN) break;
+    vec3 A = uBeamA[i].xyz, sd = uBeamB[i].xyz - A; float L = length(sd); if (L < 1.0) continue; sd /= L;
+    vec3 w0 = o - A; float bq = dot(d, sd), dw = dot(d, w0), e = dot(sd, w0);
+    float u = clamp(e + bq * (bq * e - dw) / max(1.0 - bq * bq, 1e-4), 0.0, L), s = bq * u - dw;
+    if (s <= 0.0 || s >= tOcc) continue;
+    float dist = length(w0 + d * s - sd * u), rw = max(0.05 * uPpf, s * 2.0 * uTanX / uRes.x * 1.2);
+    float dash = step(0.45, fract(u / (1.2 * uPpf) - uTime * 1.5));
+    col += uBeamC[i].rgb * (1.0 - smoothstep(rw * 0.3, rw, dist)) * (0.55 + 0.45 * dash) * 1.2 * smoothstep(2.0 * uPpf, 6.0 * uPpf, u);   // fades in past the attacker's own head
   }
   if (uMood > 0.5) col = max(mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, uSat), 0.0);
   outColor = vec4(col, 1.0);
@@ -902,7 +959,7 @@ export class PovRenderer {
     this.floatRT = !!gl.getExtension("EXT_color_buffer_float");
     this.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     // fit the uniform arrays to this GPU (WebGL2 guarantees only 224 vec4s)
-    const budget = Math.max(120, gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) - 48);
+    const budget = Math.max(120, gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) - 80);   // the rest: camera, mood, weather, cover lines...
     this.NL = Math.min(48, Math.floor(budget * 0.25 / 2));
     this.NS = Math.min(48, Math.floor((budget - this.NL * 2) / 5));
     this.scene = compile(gl, VS, SCENE_FS(this.NL, this.NS));
@@ -1008,6 +1065,22 @@ export class PovRenderer {
     try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, src); gl.generateMipmap(gl.TEXTURE_2D); } catch (e) { /* frame not ready */ }
   }
 
+  /** spell templates: [{type, x, z, len, dir, half (cone half angle) or width, base (px), color}] */
+  setTemplates(list) {
+    const gl = this.gl, T = {circle: 1, cone: 2, rect: 3, ray: 4};
+    const L = (list ?? []).filter(t => T[t.type]).slice(0, 16), n = Math.max(1, L.length), d = new Float32Array(n * 3 * 4);
+    L.forEach((t, i) => {
+      d.set([t.x, t.z, t.len, T[t.type]], i * 4);
+      d.set([t.dir, t.type === "ray" ? t.width : t.half, t.base, 0], (n + i) * 4);
+      d.set([...t.color, 1], (2 * n + i) * 4);
+    });
+    if (this.tex.tpl) gl.deleteTexture(this.tex.tpl);
+    const tx = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tx);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, n, 3, 0, gl.RGBA, gl.FLOAT, d);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    this.tex.tpl = tx; this.tplN = L.length;
+  }
+
   setAtlas(atlasCanvas) {
     const gl = this.gl;
     if (this.tex.atlas) gl.deleteTexture(this.tex.atlas);
@@ -1078,6 +1151,12 @@ export class PovRenderer {
       // weather (feet -> pixels)
       const P = W.ppf, wk = Wx ? (Wx.k ?? 0) : 0;
       this._bindTex(5, this.tex.shelter, u.uShelter);
+      if (!this.tex.tpl) this.setTemplates([]);
+      this._bindTex(9, this.tex.tpl, u.uTpl); gl.uniform1i(u.uTplN ?? null, this.tplN ?? 0);
+      const BM = (opts.beams ?? []).slice(0, 4), BA = new Float32Array(16), BB = new Float32Array(16), BC = new Float32Array(16);
+      BM.forEach((b, i) => { BA.set([...b.from, 0], i * 4); BB.set([...b.to, 0], i * 4); BC.set([...b.color, 1], i * 4); });
+      if (u.uBeamA) gl.uniform4fv(u.uBeamA, BA); if (u.uBeamB) gl.uniform4fv(u.uBeamB, BB); if (u.uBeamC) gl.uniform4fv(u.uBeamC, BC);
+      gl.uniform1i(u.uBeamN ?? null, BM.length);
       this._bindTex(6, this.tex.propData, u.uPropData); this._bindTex(7, this.tex.propInfo, u.uPropInfo); this._bindTex(8, this.tex.propPic, u.uPropPic);
       gl.uniform1i(u.uWx ?? null, wk);
       gl.uniform3fv(u.uWxVel ?? null, (Wx?.vel ?? [0, 0, 0]).map(v => v * P));

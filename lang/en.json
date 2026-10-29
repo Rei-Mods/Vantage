@@ -266,6 +266,12 @@
       "sandbags": "Sandbags",
       "hay": "Hay bales",
       "kiosk": "Neon kiosk"
+    },
+    "Cover": {
+      "none": "no cover",
+      "half": "half cover (+2 AC)",
+      "three": "three-quarters cover (+5 AC)",
+      "full": "full cover (can't be targeted)"
     }
   }
 }

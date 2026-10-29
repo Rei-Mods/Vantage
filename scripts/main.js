@@ -1,5 +1,5 @@
 // Vantage - see the battlemap in 3D from a token's eyes (or an overview), and show it to the players
-import {MOD, FIGURES, figureOf, L, viewOptions} from "./foundry.js";
+import {MOD, FIGURES, figureOf, L, viewOptions, templatesOf} from "./foundry.js";
 import {WALL_SKINS, MOODS, WEATHER} from "./renderer.js";
 import {PROP_LOOKS} from "./world.js";
 import {PovWindow, PovViewer, onSocket, sendSnapshot} from "./app.js";
@@ -43,6 +43,9 @@ const viewerTokens = foundry.utils.debounce(() => PovViewer.instance?.refreshTok
 for (const h of ["createToken", "updateToken", "deleteToken"]) Hooks.on(h, () => { if (PovViewer.instance?.mode === "live") viewerTokens(); });
 // a figure choice set on an actor's prototype token applies to its tokens already on the map
 Hooks.on("updateScene", doc => PovViewer.instance?.relook?.(doc));
+for (const h of ["createMeasuredTemplate", "updateMeasuredTemplate", "deleteMeasuredTemplate"]) Hooks.on(h, doc => {
+  const v = PovViewer.instance; if (v?.view?.world && v.liveScene === doc.parent?.id) { v.view.setTemplates(templatesOf(doc.parent, {playerView: true})); v.applyLive(v.lastLive); }
+});
 Hooks.on("updateActor", (actor, changes) => { if (foundry.utils.hasProperty(changes, `prototypeToken.flags.${MOD}`)) PovWindow.instance?.refreshTokens(); });
 
 // ------------------------------------------------------------------ config fields

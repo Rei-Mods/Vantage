@@ -157,6 +157,10 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 - **Click a figure** to pick it (it's selected on the map too, and a double-click moves it). **Right-click** a figure to target it (Shift keeps your other targets). Targets get an orange ring.
 - A ring shows where a double-click would land.
 
+### Spell templates and cover
+- **Templates show up in 3D** as they're placed on the map: circles, cones, lines and squares tint the ground with a glowing edge, and a circle rises as a faint dome (a sphere of effect). Hidden templates stay GM-only.
+- **Cover check**: pick a token (click its figure, or look through its eyes) and target others. A line runs to each target, coloured by its cover (green none, yellow half, orange three-quarters, red full), and the window lists it ("half cover (+2 AC)"). It is worked out in 3D from the best spot in your token's square to 9 points over the target's body, so walls, low walls, crates, terrain and other creatures (half cover) all count.
+
 ### Weather and time of day
 - **11 kinds of weather in 3D**: rain, thunderstorm (with lightning), snow, blizzard, fog (drifting ground mist), falling ash, embers, falling leaves, fireflies, sandstorm, or clear. Drops and flakes are real 3D particles: they fall behind and in front of figures, catch the light of nearby lamps, and stop at walls.
 - **Follows Foundry**: by default a scene shows its own Foundry weather (or FXMaster's). Pick another in the window or in Scene Config.

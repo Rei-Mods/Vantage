@@ -178,6 +178,17 @@ export function lightsOf(scene) {
   }).filter(l => l.range > 0);
 }
 
+/** the scene's spell templates (Foundry measured templates), in scene-rect px; hidden ones only for the GM */
+export function templatesOf(scene, {playerView = false} = {}) {
+  const r = rectOf(scene), C = foundry.utils.Color;
+  return (scene.templates?.contents ?? []).filter(t => !(t.hidden && (playerView || !game.user.isGM))).map(t => {
+    let color = [1, 0.5, 0.2];
+    try { color = C.from(t.fillColor || t.author?.color || "#ff8040").rgb; } catch (e) { /* default */ }
+    return {id: t.id, type: t.t, x: t.x - r.ox, y: t.y - r.oy, len: (t.distance ?? 0) * r.ppf, dir: (t.direction ?? 0) * Math.PI / 180,
+      half: (t.angle || 53.13) * Math.PI / 360, width: (t.width || 5) * r.ppf, elevation: t.elevation ?? 0, color};
+  });
+}
+
 /** the nearest hostile the token could look at (for the default facing) */
 export function nearestFoe(scene, tok, list) {
   const mine = scene.tokens.get(tok.id);
