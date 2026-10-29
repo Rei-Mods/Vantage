@@ -145,6 +145,7 @@ export class PovView {
       const xi = Math.floor(x * hs), zi = Math.floor(z * hs);
       if (xi < 0 || zi < 0 || xi >= W.hw || zi >= W.hh) continue;
       if (y < hd[(zi * W.hw + xi) * 2] * ppf) return 1;
+      if (W.hasSlabs) { const k = (zi * W.hw + xi) * 2, SL = W.slabData; if (SL[k + 1] > SL[k] && y > SL[k] * ppf && y < SL[k + 1] * ppf) return 1; }
     }
     const dd = d[0] * d[0] + d[2] * d[2] || 1;
     for (const s of this.standees) {
@@ -346,9 +347,15 @@ export class PovView {
       if (xi < 0 || zi < 0 || xi >= W.hw || zi >= W.hh) return [-Infinity, 0];
       const k = zi * W.hw + xi; return [Math.min(hd[k * 2] * ppf, this.cutLim(x, z, t)), hd[k * 2 + 1]];
     };
+    const SL = W.hasSlabs ? W.slabData : null;
+    const inSlab = (x, z, y) => { if (!SL) return false; const xi = Math.floor(x * hs), zi = Math.floor(z * hs); if (xi < 0 || zi < 0 || xi >= W.hw || zi >= W.hh) return false; const k = (zi * W.hw + xi) * 2; return SL[k + 1] > SL[k] && y > SL[k] * ppf && y < SL[k + 1] * ppf; };
     let tp = tn;
     for (let t = tn, i = 0; t <= tf && i < 40000; i++) {
       const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t;
+      if (inSlab(x, z, y)) {   // a bridge deck, a roof, a ceiling: the point on its top (or underside)
+        const xi = Math.floor(x * hs), zi = Math.floor(z * hs), k = (zi * W.hw + xi) * 2;
+        return {t, x, y: d[1] < 0 ? SL[k + 1] * ppf : y, z, kind: 0, side: false, slab: true};
+      }
       if (y < hAt(x, z, t)[0]) {
         let a = tp, b = t;
         for (let k = 0; k < 12; k++) { const m = (a + b) / 2; if (o[1] + d[1] * m < hAt(o[0] + d[0] * m, o[2] + d[2] * m, m)[0]) b = m; else a = m; }

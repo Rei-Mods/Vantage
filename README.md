@@ -122,6 +122,8 @@ Open any **Region → Placement → Vantage (3D view) → Height (ft)**. The reg
 
 <br clear="right">
 
+**Bridges, roofs and overhangs**: give a raised region an **Underside (ft)** below its Height and it floats: a bridge deck (Height 17, Underside 15.5), a balcony, a roof or an awning, with open space under it to walk through and see through. Tokens at its height stand on top; tokens below walk underneath. In eye view under a higher Level, that level becomes a ceiling over your head instead of disappearing.
+
 **Looks like**: a top-down map has no art for the *sides* of a cabinet, so pick what the block is, and Vantage draws its front, sides and back. 40 looks: arcade cabinet, vending machine, server rack, bookshelf, wooden crate, cargo container, computer console, bar counter, shop counter, fridge, lockers, stone plinth, barrels, machinery, wardrobe / dresser, glass display case, sandbags, hay bales, neon kiosk, altar, table, bed, hearth, treasure chest, sofa, ATM, jukebox, reactor core, stacked tyres, dumpster, car, warehouse shelving, piano, market stall, planter, boulder, ice block, glowing crystals, cage / jail bars, or *the top's art carried down*. Screens, LEDs and neon glow; colours come from the art on top; a long block becomes a row of machines, each a little different. The front faces the open floor (or the side you choose). Add a **Front picture** (any image: a cabinet front, a shop sign) to put real art on the front face.
 
 <p align="center"><img src="docs/images/looks-catalogue.jpg" width="90%" alt="The 40 looks for raised areas, from arcade cabinet to jail bars"></p>
@@ -292,7 +294,7 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 | Where | Field | Flag |
 |---|---|---|
 | Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock; Wall skin; Lighting mood; Light colour; Weather; Sun direction (degrees, 0 = top of the map) | `flags.vantage.heightMax`, `flags.vantage.raiseDark`, `flags.vantage.wallSkin`, `flags.vantage.mood`, `flags.vantage.lightColor`, `flags.vantage.weather`, `flags.vantage.sunAz` |
-| Region Config → Placement → Vantage | Height (ft), negative = pit; Looks like; Front faces; Front picture | `flags.vantage.raise`, `flags.vantage.look`, `flags.vantage.front` (degrees, empty = automatic), `flags.vantage.pic` |
+| Region Config → Placement → Vantage | Height (ft), negative = pit; Underside (ft); Looks like; Front faces; Front picture | `flags.vantage.raise`, `flags.vantage.under`, `flags.vantage.look`, `flags.vantage.front` (degrees, empty = automatic), `flags.vantage.pic` |
 | Token / Prototype Token Config → Appearance → Vantage 3D figure | Figure, 3D picture | `flags.vantage.figure`, `flags.vantage.standee` |
 | (token or actor flag) | Lie flat like an object | `flags.vantage.flat` |
 

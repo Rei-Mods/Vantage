@@ -24,6 +24,7 @@ uniform vec4 uLPos[${MAX_LIGHTS}], uLCol[${MAX_LIGHTS}];
 // uWxP = density, streak (s), size (px), opacity; uWxQ = cell (px), wobble (px), max height over the floor (px, 0 = any), self-lit
 uniform int uWx; uniform vec3 uWxVel, uWxCol, uWxMistCol; uniform vec4 uWxP, uWxQ; uniform float uWxFlash, uWxMist, uWxGround, uWxTop;
 uniform sampler2D uShelter;
+uniform sampler2D uSlab; uniform float uSlabOn;   // overhangs (bridges, roofs, ceilings): a floating slab per point, bottom..top (ft)
 uniform vec4 uHover, uHoverCol;
 uniform sampler2D uPropData, uPropInfo, uPropPic;
 uniform sampler2D uVis; uniform float uVisOn;      // a player's sight: R = in sight now, G = explored before
@@ -49,6 +50,14 @@ float cutLim(vec2 xz, float t){
   return lim;
 }
 float hCut(vec3 p, float t){ return min(hAt(p.xz), cutLim(p.xz, t)); }
+// a floating slab over a point (bridge deck, roof, balcony, the ceiling of a higher level): (bottom, top) px, top < bottom = none
+vec2 slabAt(vec2 xz){
+  if (uSlabOn < 0.5) return vec2(0.0, -1.0);
+  ivec2 ij = ivec2(clamp(xz / uWorld * uHRes, vec2(0.0), uHRes - 1.0));
+  return texelFetch(uSlab, ij, 0).rg * uPpf;
+}
+bool inSlab(vec3 p, float t){ vec2 s = slabAt(p.xz); return s.y > s.x && p.y > s.x && p.y < min(s.y, cutLim(p.xz, t)); }
+bool solidAt(vec3 p, float t){ return p.y < hCut(p, t) || inSlab(p, t); }
 int kindAt(vec2 xz){
   ivec2 ij = ivec2(clamp(xz / uWorld * uHRes, vec2(0.0), uHRes - 1.0));
   return int(texelFetch(uHeight, ij, 0).g + 0.5);
@@ -78,7 +87,7 @@ float shadowTo(vec3 p, vec3 lp){
     }
     if (skip > 0.0) { t += skip; continue; }
     float dh = q.y - hCut(q, distance(q, uCamPos));
-    if (dh < 0.0) return 0.0;
+    if (dh < 0.0 || inSlab(q, distance(q, uCamPos))) return 0.0;
     res = min(res, 5.0 * dh / t);
     t += stp;
   }
@@ -659,16 +668,16 @@ void main(){
           break;
         }
       }
-      if (skip > 0.0) { tp = t; t += skip; if (t > tf) { vec3 q = o + d * tf; if (q.y < hCut(q, tf)) { t = tf; hit = true; } break; } continue; }
-      if (p.y < hCut(p, t)) { hit = true; break; }
+      if (skip > 0.0) { tp = t; t += skip; if (t > tf) { vec3 q = o + d * tf; if (solidAt(q, tf)) { t = tf; hit = true; } break; } continue; }
+      if (solidAt(p, t)) { hit = true; break; }
       tp = t; t += max(texel * 0.55, t * 0.0013);
-      if (t > tf) { vec3 q = o + d * tf; if (q.y < hCut(q, tf)) { t = tf; hit = true; } break; }
+      if (t > tf) { vec3 q = o + d * tf; if (solidAt(q, tf)) { t = tf; hit = true; } break; }
     }
   }
   vec3 col; float tHit = 1e12;
   if (hit) {
     float a = tp, b = t;
-    for (int k = 0; k < 9; k++) { float m = 0.5 * (a + b); vec3 q = o + d * m; if (q.y < hCut(q, m)) b = m; else a = m; }
+    for (int k = 0; k < 9; k++) { float m = 0.5 * (a + b); vec3 q = o + d * m; if (solidAt(q, m)) b = m; else a = m; }
     t = b; tHit = t;
     vec3 p = o + d * t;
     float hb = hAt(p.xz);
@@ -680,6 +689,22 @@ void main(){
     float lim = cutLim(p.xz, t);
     bool cut = hb > lim + 0.5 * uPpf && p.y > lim - 0.5 * uPpf;
     bool side = slope > (kd == 6 ? 5.0 : 1.2) && !cut;   // height-map slopes stay map art (shaded by their slope) unless almost a cliff
+    // an overhang (bridge, roof, ceiling) rather than the ground under it: its top, its underside or its edge
+    vec2 sl = slabAt(p.xz);
+    bool onSlab = sl.y > sl.x && p.y > hb + 0.2 * uPpf && p.y > sl.x - 0.4 * uPpf;
+    bool underSlab = !onSlab && sl.y > sl.x && p.y < sl.x;
+    int sf = 0;
+    vec2 en = vec2(0.0);
+    if (onSlab) {
+      sf = (p.y > sl.y - 0.35 * uPpf && d.y < 0.0) ? 1 : (p.y < sl.x + 0.35 * uPpf && d.y > 0.0) ? 2 : 3;
+      if (sf == 3) {   // which way its edge faces
+        float ee = texel * 1.5;
+        vec2 so = vec2((slabAt(p.xz + vec2(ee, 0.0)).y > -0.5 ? 1.0 : 0.0) - (slabAt(p.xz - vec2(ee, 0.0)).y > -0.5 ? 1.0 : 0.0),
+                       (slabAt(p.xz + vec2(0.0, ee)).y > -0.5 ? 1.0 : 0.0) - (slabAt(p.xz - vec2(0.0, ee)).y > -0.5 ? 1.0 : 0.0));
+        en = length(so) > 0.0 ? -normalize(so) : -normalize(d.xz + 1e-5);
+      }
+      side = sf != 1; cut = false; kd = 0;
+    }
     // a wall face: take the top height of the column we hit for the trim/shading reference
     vec2 inward = length(g) > 1e-6 ? normalize(g) : vec2(0.0);
     if (side) { hb = max(hb, hAt(p.xz + inward * texel * 1.5)); kd = kindAt(p.xz + inward * texel * 1.0); }
@@ -687,11 +712,13 @@ void main(){
     if (side && kd == 5) pd = ivec4(texelFetch(uPropData, ivec2(clamp((p.xz + inward * texel) / uWorld * uHRes, vec2(0.0), uHRes - 1.0)), 0) * 255.0 + 0.5);
     vec3 emit = vec3(0.0);   // self-lit bits of props (screens, LEDs): added after the light
     vec2 n2 = length(g) > 1e-4 ? normalize(-g) : -normalize(d.xz + 1e-5);
+    if (sf == 3) n2 = en;
     vec3 N = side ? vec3(n2.x, 0.0, n2.y) : vec3(0.0, 1.0, 0.0);
+    if (sf == 2) N = vec3(0.0, -1.0, 0.0);
     float glow = 0.0; vec3 glowCol = uTrim;   // self-lit bits (glow trims, token rings): a dark mood doesn't dim them
     float pxFt = t * 2.0 * uTanX / uRes.x / uPpf / (side ? max(abs(dot(d, N)), 0.25) : max(abs(d.y), 0.25));
     if (!side) {
-      col = texture(uFloor, uv).rgb;
+      col = underSlab ? textureLod(uFloor, uv, 4.5).rgb * 0.8 : texture(uFloor, uv).rgb;
       if (cut) {
         // a cut-away top: the map art, dimmed, with a thin glowing rim where the cut ends (a section view, not a black hole)
         col = col * 0.42 + uTrim * 0.03;
@@ -793,6 +820,8 @@ void main(){
         col = wallSkin(uSkin, fu, p.y / uPpf, dt, foot, uv, p.xz, n2, kd == 3, pxFt) * (0.55 + 0.45 * rel);
       }
     }
+    if (sf == 2) { col = textureLod(uFloor, uv, 6.0).rgb * 0.3 + vec3(0.045, 0.04, 0.035); glow = 0.0; }   // the underside of a deck or ceiling
+    else if (sf == 3) { col = textureLod(uFloor, uv, 2.0).rgb * 0.55; glow = 0.0; }                        // its edge
     // light: "automatic" keeps the map's own light (walls shaded by a fixed key); a mood tints it, adds a sun (or moon)
     // with shadows, and scales the scene's lights
     float keyT = clamp(dot(N.xz, normalize(vec3(0.35, 0.8, -0.45)).xz), 0.0, 1.0);
@@ -844,7 +873,8 @@ void main(){
       vec2 tp = tplAt(p.xz, pxFt * uPpf);
       if (tp.x > 0.0) col = mix(col, tplCol * max(dot(col, vec3(0.33)) * 1.8, 0.4), 0.45) + tplCol * tp.y * 1.2;
     }
-    if (uAO > 0.0 && !cut) col *= mix(1.0, side ? aoSide(p, n2, texel) : aoFloor(p, t), uAO * 0.85);
+    if (uAO > 0.0 && !cut && !onSlab) col *= mix(1.0, side ? aoSide(p, n2, texel) : aoFloor(p, t), uAO * 0.85);
+    if (underSlab) col *= 0.6;   // the shade under a bridge or roof
     float fog = 1.0 - exp(-max(t - uFogStart * uPpf, 0.0) / (uFogFt * uPpf));
     col = mix(col, uFogCol, fog);
     if (uVisOn > 0.5) {   // fog of war: out of sight is dark; explored places stay as a dim grey memory
@@ -1149,9 +1179,11 @@ export class PovRenderer {
     const mt = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, mt);
     let w = world.hw, h = world.hh;
     let cur = new Float32Array(w * h);
+    const SL = world.slabData;   // overhang tops count as tall (rays under them just march)
+    const top = k => SL && SL[k * 2 + 1] > SL[k * 2] ? Math.max(world.heightData[k * 2], SL[k * 2 + 1]) : world.heightData[k * 2];
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       let m = -1e6;
-      for (let dy = -1; dy <= 1; dy++) { const yy = Math.min(h - 1, Math.max(0, y + dy)); for (let dx = -1; dx <= 1; dx++) { const xx = Math.min(w - 1, Math.max(0, x + dx)); const v = world.heightData[(yy * w + xx) * 2]; if (v > m) m = v; } }
+      for (let dy = -1; dy <= 1; dy++) { const yy = Math.min(h - 1, Math.max(0, y + dy)); for (let dx = -1; dx <= 1; dx++) { const xx = Math.min(w - 1, Math.max(0, x + dx)); const v = top(yy * w + xx); if (v > m) m = v; } }
       cur[y * w + x] = m;
     }
     let lod = 0; const maxLod = Math.min(6, Math.floor(Math.log2(Math.min(w, h))));
@@ -1186,6 +1218,13 @@ export class PovRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.tex.shelter = sh;
+    // overhangs: (bottom, top) ft per point
+    if (this.tex.slab) gl.deleteTexture(this.tex.slab);
+    const slt = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, slt); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, world.hw, world.hh, 0, gl.RG, gl.FLOAT, world.slabData ?? new Float32Array(world.hw * world.hh * 2).fill(-1));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.tex.slab = slt; this.slabOn = !!world.hasSlabs;
     // raised areas that look like something: look / front / region per pixel, a box and picture per region
     for (const k of ["propData", "propInfo", "propPic"]) if (this.tex[k]) gl.deleteTexture(this.tex[k]);
     const nn = (t) => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -1318,6 +1357,7 @@ export class PovRenderer {
       if (!this.tex.tpl) this.setTemplates([]);
       if (!this.tex.vis) { this.setVision(new Uint8Array([255, 255, 0, 255]), 1, 1); this.visOn = false; }
       this._bindTex(10, this.tex.vis, u.uVis); gl.uniform1f(u.uVisOn ?? null, this.visOn && !opts.noVision ? 1 : 0);
+      this._bindTex(11, this.tex.slab, u.uSlab); gl.uniform1f(u.uSlabOn ?? null, this.slabOn ? 1 : 0);
       this._bindTex(9, this.tex.tpl, u.uTpl); gl.uniform1i(u.uTplN ?? null, this.tplN ?? 0);
       const BM = (opts.beams ?? []).slice(0, 4), BA = new Float32Array(16), BB = new Float32Array(16), BC = new Float32Array(16);
       BM.forEach((b, i) => { BA.set([...b.from, 0], i * 4); BB.set([...b.to, 0], i * 4); BC.set([...b.color, 1], i * 4); });

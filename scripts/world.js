@@ -125,6 +125,10 @@ export async function buildWorld(data, opts = {}) {
   const standFt = new Float32Array(hw * hh).fill(NaN), standLo = new Float32Array(hw * hh), standHi = new Float32Array(hw * hh);
   const [lc, lctx] = canvas2d(hw, hh);
   const floorLayers = [];   // what the floor is painted from, in order (video art is redrawn while it plays)
+  // overhangs: a floating slab (bottom, top ft) over the ground - bridge decks, roofs, balconies, the ceiling of a higher level
+  const slabData = new Float32Array(hw * hh * 2).fill(-1);
+  let hasSlabs = false;
+  const addSlab = (k, lo, hi) => { const a = slabData[k * 2], b = slabData[k * 2 + 1]; if (b > a) { slabData[k * 2] = Math.min(a, lo); slabData[k * 2 + 1] = Math.max(b, hi); } else { slabData[k * 2] = lo; slabData[k * 2 + 1] = hi; } hasSlabs = true; };
 
   for (let i = 0; i < coverSet.length; i++) {
     const lv = coverSet[i];
@@ -140,7 +144,11 @@ export async function buildWorld(data, opts = {}) {
     lctx.clearRect(0, 0, hw, hh); draw(lctx, hw, hh);
     const px = lctx.getImageData(0, 0, hw, hh).data;
     const elev = lv.bottom ?? 0;
-    for (let k = 0, j = 3; k < hw * hh; k++, j += 4) if (px[j] > 127) { coverHeight[k] = elev; if (used) { heightFt[k] = elev; owner[k] = i; } }
+    for (let k = 0, j = 3; k < hw * hh; k++, j += 4) if (px[j] > 127) {
+      coverHeight[k] = elev;
+      if (used) { heightFt[k] = elev; owner[k] = i; }
+      else addSlab(k, elev - 0.5, elev);   // a level over the viewer's head: a ceiling you can see from below
+    }
   }
 
   // ---- height maps (experimental): "<map>_height.webp/png/jpg" next to a level's art; white = tallest (heightMapMax ft)
@@ -253,6 +261,8 @@ export async function buildWorld(data, opts = {}) {
   for (const rg of data.regions ?? []) {
     const hr = Number(rg.raise);
     if (!rg.polys?.length || !Number.isFinite(hr) || Math.abs(hr) < 0.1) continue;
+    const under = Number(rg.under);
+    const floating = hr > 0 && rg.under !== null && rg.under !== undefined && rg.under !== "" && Number.isFinite(under) && under > 0 && under < hr;
     const own = (rg.levels ?? []).filter(id => lvById.has(id));
     if (rg.levels?.length && !own.length) continue;   // it belongs to a level that isn't built in this view
     const px = rasterPolys(rg.polys, data, hs, hw, hh);
@@ -265,6 +275,10 @@ export async function buildWorld(data, opts = {}) {
       base = fl.length ? fl[fl.length >> 1] : baseElev;
     }
     const top = base + hr;
+    if (floating) {   // a slab from its underside up to its height: room to walk under it
+      for (const k of px) { addSlab(k, base + under, top); standFt[k] = top; standLo[k] = top - 1.5; standHi[k] = top + 1; }
+      continue;
+    }
     const used = [];
     for (const k of px) {
       if (kind[k] === KIND.rock && heightFt[k] > top) continue;
@@ -374,6 +388,7 @@ export async function buildWorld(data, opts = {}) {
   // ---- where weather can't fall (ft): under a higher floor (also one hidden over the viewer's head), and in regions
   // with a "suppress weather" behaviour (whole column)
   const shelterFt = coverHeight.slice();
+  if (hasSlabs) for (let k = 0; k < hw * hh; k++) if (slabData[k * 2 + 1] > slabData[k * 2]) shelterFt[k] = Math.max(shelterFt[k], slabData[k * 2 + 1]);
   for (const rg of data.regions ?? []) {
     if (!rg.dry || !rg.polys?.length) continue;
     for (const k of rasterPolys(rg.polys, data, hs, hw, hh)) shelterFt[k] = 1e4;
@@ -396,9 +411,10 @@ export async function buildWorld(data, opts = {}) {
   for (let k = 0; k < hw * hh; k++) {
     const v = heightFt[k]; heightData[k * 2] = v; heightData[k * 2 + 1] = kind[k];
     if (v > maxH) maxH = v; if (v < minH) minH = v;
+    if (hasSlabs && slabData[k * 2 + 1] > slabData[k * 2] && slabData[k * 2 + 1] > maxH) maxH = slabData[k * 2 + 1];
   }
   return {W, H, ppf, gridPx: data.gridPx ?? ppf * 5, ox: data.ox, oy: data.oy, hs, hw, hh, floorCanvas: floor, heightData, heightFt, levelHeight, coverHeight,
-    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, shelterFt, propData, propInfo, propAtlas, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
+    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, shelterFt, propData, propInfo, propAtlas, slabData, hasSlabs, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
     viewElev: view?.bottom ?? baseElev,   // the floor of the level being viewed (ft): what an overview looks at
     floorLayers, hasVideo: floorLayers.some(l => isVideo(l.media)), maxTex: opts.maxTex,
     levelIds: new Set(set.map(l => l.id))};

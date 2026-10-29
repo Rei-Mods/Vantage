@@ -71,6 +71,10 @@ Hooks.on("renderRegionConfig", (app, html) => {
       <div class="form-fields"><input type="number" name="flags.${MOD}.raise" step="0.5" min="-40" max="60" value="${Number.isFinite(v) ? v : ""}" placeholder="${escA(L("Region.Placeholder"))}"></div>
       <p class="hint">${L("Region.Hint")}</p>
     </div>
+    <div class="form-group"><label>${L("Region.Under")}</label>
+      <div class="form-fields"><input type="number" name="flags.${MOD}.under" step="0.5" min="0" max="60" value="${Number.isFinite(f.under) ? f.under : ""}" placeholder="${escA(L("Region.UnderPlaceholder"))}"></div>
+      <p class="hint">${L("Region.UnderHint")}</p>
+    </div>
     <div class="form-group"><label>${L("Region.Look")}</label>
       <div class="form-fields"><select name="flags.${MOD}.look">${PROP_LOOKS.map(k => `<option value="${k}" ${k === look ? "selected" : ""}>${escA(L(`Looks.${k}`))}</option>`).join("")}</select></div>
       <p class="hint">${L("Region.LookHint")}</p>
