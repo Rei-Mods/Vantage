@@ -2,6 +2,7 @@
 import {MOD, FIGURES, figureOf, L, viewOptions, templatesOf} from "./foundry.js";
 import {WALL_SKINS, MOODS, WEATHER} from "./renderer.js";
 import {PROP_LOOKS} from "./world.js";
+import {prepDialog} from "./prep.js";
 import {PovWindow, PovViewer, onSocket, sendSnapshot} from "./app.js";
 
 const S = k => `VANTAGE.Settings.${k}`;
@@ -134,10 +135,15 @@ Hooks.on("renderSceneConfig", (app, html) => {
       <div class="form-fields"><select name="flags.${MOD}.weather">${wxSel}</select></div>
       <p class="hint">${L("Scene.WeatherHint")}</p>
     </div>
+    <div class="form-group"><label>${L("Prep.Title")}</label>
+      <div class="form-fields"><button type="button" class="vtg-prep"><i class="fa-solid fa-wand-magic-sparkles"></i> ${L("Prep.Button")}</button></div>
+      <p class="hint">${L("Prep.Hint")}</p>
+    </div>
     <div class="form-group"><label>${L("Scene.SunAz")}</label>
       <div class="form-fields"><input type="number" name="flags.${MOD}.sunAz" step="5" min="0" max="360" value="${az}" placeholder="${escA(L("Scene.SunAzAuto"))}"></div>
       <p class="hint">${L("Scene.SunAzHint")}</p>
     </div>`;
+  fs.querySelector(".vtg-prep")?.addEventListener("click", ev => { ev.preventDefault(); prepDialog(app.document); });
   (part.querySelector(".scrollable") ?? part).append(fs);
 });
 

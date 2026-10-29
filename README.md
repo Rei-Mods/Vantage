@@ -252,6 +252,15 @@ The toolbar has **Eye** and **Overview** to switch camera, a dropdown to choose 
 | A sunset, a night, a neon club, a torchlit dungeon | A *Lighting mood* in *Scene Config → Vantage*. Set *Sun direction* to match the map's painted shadows. |
 | A fey realm, a blood moon, an alien sky | *Fey twilight*, *Blood moon*, *Aurora night*… or a *Light colour* (purple, red, anything) on top of any mood. |
 
+### Prep this map (one click)
+**Scene Config → Vantage → Prep this map…** looks at the scene and offers, before changing anything:
+- **A height map from the water**: rivers, lakes and shores are found on the map art (you see them highlighted), and the ground rises away from them, so banks and canyons appear. It is saved in `vantage-height-maps/` and used for this scene.
+- **Raised areas from tiles**: tiles that are objects become raised areas, with a look and height guessed from their names (crate, barrel, table, car, bookshelf...). Bridges and roofs float.
+- **Looks for raised regions** from their names ("Vantage: arcade cabinets" gets *Arcade cabinet*).
+Everything it makes is marked, and **Undo** in the same dialog removes it.
+
+<p align="center"><img src="docs/images/map-prep.jpg" width="80%" alt="Prep finding the river on a canyon map, and the banks rising in 3D"></p>
+
 ### Making a height map
 Any image editor works: paint the floor black, then paint hills and mounds in lighter greys with soft brushes, and the tallest parts white. You can also ask an image generator to convert the map. This prompt works well (attach the map):
 

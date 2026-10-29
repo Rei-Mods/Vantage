@@ -36,6 +36,7 @@ export function sceneData(scene, viewLevel) {
   const r = rectOf(scene);
   const hMax = heightMaxOf(scene);
   let levels = [];
+  const own = sceneFlag(scene, "heightSrc");   // a height map made by Prep this map (or picked by hand): the bottom level uses it
   if (scene.levels?.size) {
     levels = scene.levels.contents.map(l => ({
       id: l.id, bottom: Number.isFinite(l.elevation?.bottom) ? l.elevation.bottom : 0,
@@ -45,6 +46,7 @@ export function sceneData(scene, viewLevel) {
   } else {
     levels = [{id: "base", bottom: 0, src: scene.background?.src ?? null, color: scene.backgroundColor?.css ?? "#111", visibility: [], heightSrcs: heightSrcs(scene.background?.src, hMax)}];
   }
+  if (own && hMax > 0 && levels.length) { const lo = levels.reduce((a, b) => (b.bottom < a.bottom ? b : a)); lo.heightSrcs = [own, ...lo.heightSrcs]; }
   // sight NORMAL = a full wall; LIMITED / PROXIMITY / DISTANCE (windows, foliage, glass) = a low wall you can see over
   const NORMAL = CONST.WALL_SENSE_TYPES?.NORMAL ?? 20;
   const walls = scene.walls.contents.map(w => ({id: w.id, c: [...w.c], sight: w.sight, low: !!w.sight && w.sight !== NORMAL,

@@ -314,6 +314,30 @@
       "Record": "Record",
       "RecordTitle": "Record a video of the window (with 2+ points: records the cutscene; without: until you click again)",
       "Seconds": "Length (s)"
+    },
+    "Prep": {
+      "Title": "Prep this map for 3D",
+      "Button": "Prep this map…",
+      "Hint": "One click: hills that rise from the map's water (rivers, shores), raised areas from the scene's tiles (crates, tables, cars... with a look from their names; bridges and roofs float), and looks for raised regions from their names. You see what it found first; everything it makes can be undone.",
+      "Working": "Vantage: looking at the map…",
+      "Intro": "Here is what Vantage found on this scene. Tick what to do:",
+      "Water": "Height map from the water",
+      "WaterFound": "About {pct}% of the map looks like water (cyan in the picture below): the ground rises away from it, up to the scene's height-map height (8 ft if not set). Untick it if the cyan isn't water.",
+      "WaterNone": "No water found on the map art.",
+      "Tiles": "Raised areas from tiles",
+      "TilesFound": "{n} tiles: {list}.",
+      "TilesNone": "No tiles that look like objects.",
+      "Looks": "Looks for raised regions",
+      "LooksFound": "{n} raised regions get a look from their names.",
+      "LooksNone": "No raised regions without a look whose names give one away.",
+      "UndoHint": "{n} things from an earlier prep are on this scene (Undo removes them).",
+      "Apply": "Apply",
+      "Undo": "Undo the earlier prep",
+      "Cancel": "Cancel",
+      "Done": "Vantage: map prepped. Height map from the water: {water}; {tiles} raised areas from tiles; {looks} looks set.",
+      "Undone": "Vantage: removed {n} regions from the earlier prep, and its height map.",
+      "Yes": "yes",
+      "No": "no"
     }
   }
 }
