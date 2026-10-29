@@ -165,8 +165,10 @@ export function lightsOf(scene) {
     const cfg = l.config ?? {};
     let rgb = [1, 1, 1];
     try { if (cfg.color !== null && cfg.color !== undefined) rgb = C.from(cfg.color).rgb; } catch (e) { /* default */ }
+    const an = cfg.animation ?? {};
     return {x: l.x - r.ox, y: l.y - r.oy, elevation: l.elevation ?? 0, range: Math.max(cfg.dim ?? 0, cfg.bright ?? 0),
-      alpha: cfg.alpha ?? 0.5, color: rgb, levels: [...(l.levels ?? [])]};
+      alpha: cfg.alpha ?? 0.5, color: rgb, levels: [...(l.levels ?? [])],
+      anim: an.type ? {type: an.type, speed: Number(an.speed ?? 5), intensity: Number(an.intensity ?? 5), reverse: !!an.reverse} : null};
   }).filter(l => l.range > 0);
 }
 

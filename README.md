@@ -146,13 +146,18 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 
 <p align="center"><img src="docs/images/stage-lights.jpg" width="80%" alt="A DJ booth on a lit stage with a figure in front of it"></p>
 
+### Animated maps and lights
+- **Video maps** (`.webm` / `.mp4`) play in 3D, on every level, and walls and figures stand on the moving art.
+- **Lights follow their Foundry animation**: torches and flames flicker, pulses breathe, sirens sweep, chroma and rainbow lights cycle colour, fog and ghost lights drift.
+- About 30 frames a second while anything moves, never while the window is minimized. Turn it off per computer with *Animate the 3D view*.
+
 ### Show your players
 - **Show Players** sends the current picture to everyone, and also works on phones. Hidden tokens are never in it.
 - **Live** makes your players' screens follow your camera while you move it. Phones get a fresh picture whenever you stop moving.
 - Optionally, let players open the view from their own tokens.
 
 ### Light on performance
-- **Nothing runs while the window is closed.** While it's open, it only draws when the camera moves.
+- **Nothing runs while the window is closed.** While it's open, it only draws when the camera moves or something on the map animates (at most 30 frames a second for animation).
 - Choose a resolution per computer (Full / Balanced / Fast). Optionally drop to half resolution while moving, for slower machines.
 - The last 2 built levels are remembered, so switching between tokens on different floors is instant after the first time.
 - No libraries and no build step: it's plain WebGL2 (a height-field ray-marcher) in about 2,200 lines of JavaScript.
@@ -249,6 +254,7 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 | Shadows + corner shading | Full | Full / Corner shading only / Off. |
 | 3D view resolution | Balanced | Full / Balanced / Fast. |
 | Lower resolution while moving | On | Half resolution while the camera moves (smooth on slow computers, slightly blurry while moving). Turn off for an always-sharp picture. |
+| Animate the 3D view | On | Video maps play, animated lights flicker and pulse, weather moves. Off = a still picture (lighter on slow computers). |
 
 ### Per scene, region and token
 | Where | Field | Flag |

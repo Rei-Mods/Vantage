@@ -33,6 +33,7 @@ Hooks.once("init", () => {
   reg("quality", {type: String, default: "0.75", choices: choices("quality", {"1": "full", "0.75": "balanced", "0.5": "fast"}),
     onChange: () => PovWindow.instance?.requestRender()}, "client");
   reg("blurMoving", {type: Boolean, default: true, onChange: () => PovWindow.instance?.requestRender()}, "client");
+  reg("animate", {type: Boolean, default: true, onChange: () => PovWindow.instance?.requestRender()}, "client");
 });
 
 function shadowOpts() { const sh = game.settings.get(MOD, "shadows"); return {shadowN: sh === "full" ? 4 : 0, ao: sh === "off" ? 0 : 1}; }

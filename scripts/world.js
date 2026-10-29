@@ -40,6 +40,30 @@ export function loadImageLike(src) {
   imgCache.set(src, p);
   return p;
 }
+export const isVideo = m => typeof HTMLVideoElement !== "undefined" && m instanceof HTMLVideoElement;
+/** animated (video) map art: start or stop playing it */
+export function playFloor(world, on) {
+  for (const l of world?.floorLayers ?? []) if (isVideo(l.media)) {
+    const v = l.media; v.loop = true; v.muted = true;
+    if (on) { if (v.paused) v.play().catch(() => {}); } else if (!v.paused) v.pause();
+  }
+}
+/** the floor as it looks right now: the video's current frame, or the levels re-composited (null = nothing to redraw) */
+export function floorFrame(world) {
+  const L = world?.floorLayers ?? [];
+  if (!world?.hasVideo) return null;
+  if (L.some(l => isVideo(l.media) && l.media.readyState < 2)) return null;   // no frame yet: keep the last one
+  if (L.length === 1) {   // a single video goes straight to the GPU, unless it is bigger than this GPU's textures
+    const [vw, vh] = mediaSize(L[0].media), mx = world.maxTex ?? 4096;
+    if (vw <= mx && vh <= mx) return L[0].media;
+  }
+  const fc = world.floorCanvas;
+  if (!world._frame) { world._frame = document.createElement("canvas"); world._frame.width = fc.width; world._frame.height = fc.height; }
+  const c = world._frame, ctx = c.getContext("2d");
+  ctx.fillStyle = "#0b0f14"; ctx.fillRect(0, 0, c.width, c.height);
+  for (const l of L) { if (l.media) ctx.drawImage(l.media, 0, 0, c.width, c.height); else if (l.color) { ctx.fillStyle = l.color; ctx.fillRect(0, 0, c.width, c.height); } }
+  return c;
+}
 export function mediaSize(m) { return m ? [m.naturalWidth || m.videoWidth || m.width, m.naturalHeight || m.videoHeight || m.height] : [0, 0]; }
 
 function canvas2d(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return [c, c.getContext("2d", {willReadFrequently: true})]; }
@@ -95,6 +119,7 @@ export async function buildWorld(data, opts = {}) {
   // where a token should stand (stairs treads, tops of raised areas): height, and the elevation range it applies to
   const standFt = new Float32Array(hw * hh).fill(NaN), standLo = new Float32Array(hw * hh), standHi = new Float32Array(hw * hh);
   const [lc, lctx] = canvas2d(hw, hh);
+  const floorLayers = [];   // what the floor is painted from, in order (video art is redrawn while it plays)
 
   for (let i = 0; i < coverSet.length; i++) {
     const lv = coverSet[i];
@@ -104,7 +129,7 @@ export async function buildWorld(data, opts = {}) {
       if (media) ctx.drawImage(media, 0, 0, w, h);
       else if (i === 0 && lv.color) { ctx.fillStyle = lv.color; ctx.fillRect(0, 0, w, h); }
     };
-    if (used) draw(fctx, fw, fh);
+    if (used) { draw(fctx, fw, fh); floorLayers.push({media, color: i === 0 ? lv.color : null}); }
     if (i === 0 || !media) continue;
     // raise everything this level paints (alpha > 0.5) to its bottom elevation
     lctx.clearRect(0, 0, hw, hh); draw(lctx, hw, hh);
@@ -308,6 +333,7 @@ export async function buildWorld(data, opts = {}) {
   return {W, H, ppf, gridPx: data.gridPx ?? ppf * 5, ox: data.ox, oy: data.oy, hs, hw, hh, floorCanvas: floor, heightData, heightFt, levelHeight, coverHeight,
     standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
     viewElev: view?.bottom ?? baseElev,   // the floor of the level being viewed (ft): what an overview looks at
+    floorLayers, hasVideo: floorLayers.some(l => isVideo(l.media)), maxTex: opts.maxTex,
     levelIds: new Set(set.map(l => l.id))};
 }
 

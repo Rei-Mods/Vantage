@@ -94,6 +94,10 @@
       "blurMoving": {
         "Name": "Lower resolution while moving",
         "Hint": "On = the picture drops to half resolution while you drag or walk the camera, so it stays smooth on slow computers (it looks slightly blurry while moving). Off = always sharp."
+      },
+      "animate": {
+        "Name": "Animate the 3D view",
+        "Hint": "On = video maps play, animated lights flicker and pulse, and weather moves (about 30 frames a second while anything moves). Off = a still picture, lighter on slow computers."
       }
     },
     "Figures": {

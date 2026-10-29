@@ -305,6 +305,15 @@ export class PovWindow extends ApplicationV2 {
   }
 
   // ---------------------------------------------------------------- draw loop
+  /** keep drawing on its own (video map art, animated lights, weather) - at most 30 frames a second, never while minimized */
+  animating() {
+    let on = true; try { on = setting("animate") !== false; } catch (e) { /* not registered */ }
+    if (this.view) this.view.animate = on;
+    const a = on && !this.minimized && !!this.view?.isAnimated();
+    if (a !== this._playing) { this._playing = a; this.view?.play(a); }
+    return a;
+  }
+
   requestRender(moving = false) {
     if (!this.view?.world) return;
     if (moving) { this._moving = true; clearTimeout(this._idle); this._idle = setTimeout(() => { this._moving = false; this.requestRender(); }, 180); }
@@ -313,6 +322,11 @@ export class PovWindow extends ApplicationV2 {
     const tick = now => {
       this._raf = null;
       if (!this.view?.world) return;
+      const anim = this.animating();
+      // animation alone: about 30 fps is plenty (saves the GPU); camera moves still draw every frame
+      if (anim && !this.keys.size && !this._moving && now - (this._lastFrame ?? 0) < 31) { this._raf = requestAnimationFrame(tick); return; }
+      this._lastFrame = now;
+      if (anim && now - (this._lastMedia ?? 0) > 38) { this.view.tickMedia(); this._lastMedia = now; }
       const dt = Math.min(0.1, (now - last) / 1000); last = now;
       const k = this.keys;
       if (k.size) {
@@ -327,7 +341,7 @@ export class PovWindow extends ApplicationV2 {
       sizeCanvas(this.canvasEl, this.stage, this.quality(this._moving));
       this.view.render();
       if (this.live) this.broadcastLive();
-      if (k.size) this._raf = requestAnimationFrame(tick);
+      if (k.size || anim) this._raf = requestAnimationFrame(tick);
     };
     this._raf = requestAnimationFrame(tick);
   }
@@ -361,8 +375,10 @@ export class PovWindow extends ApplicationV2 {
   broadcastLive(force = false) {
     const now = performance.now();
     if (!force && now - this._lastLive < 90) { clearTimeout(this._liveT); this._liveT = setTimeout(() => this.broadcastLive(true), 100); return; }
-    this._lastLive = now;
     const c = this.view.cam;
+    const key = JSON.stringify([c.mode, c.pos, c.yaw, c.pitch, c.fov, c.target, c.dist, c.orbitPitch, this.view.selfId]);
+    if (!force && key === this._lastLiveKey) return;   // nothing moved (an animation frame): don't spam the players
+    this._lastLive = now; this._lastLiveKey = key;
     emit({t: "live", from: game.user.id, sceneId: this.scene.id, viewLevel: this.viewLevel, maxBottom: this.maxBottom ?? null, title: this.title2(),
       cam: {mode: c.mode, pos: c.pos, yaw: c.yaw, pitch: c.pitch, fov: c.fov, target: c.target, targetElev: c.targetElev ?? null, dist: c.dist, orbitPitch: c.orbitPitch}, selfId: this.view.selfId});
     this._phoneSnap();
@@ -392,7 +408,7 @@ export class PovWindow extends ApplicationV2 {
     for (const [h, id] of this.hooks) Hooks.off(h, id);
     this.hooks = [];
     this.ro?.disconnect(); cancelAnimationFrame(this._raf);
-    this.view?.dispose(); this.view = null;
+    this.view?.play(false); this.view?.dispose(); this.view = null;
     if (PovWindow.instance === this) PovWindow.instance = null;
     return super.close(options);
   }
@@ -494,13 +510,21 @@ export class PovViewer extends ApplicationV2 {
     Object.assign(this.view.cam, foundry.utils.deepClone(msg.cam));
     this.view.selfId = msg.selfId;
     const sc = game.scenes.get(this.liveScene); if (sc) Object.assign(this.view.opts, lookOf(sc));   // the GM may change the mood mid-way
-    if (this._raf) return;
-    this._raf = requestAnimationFrame(() => {
+    if (this._raf || this._tmo) return;
+    const frame = now => {
       this._raf = null;
+      if (!this.view?.world) return;
+      let on = true; try { on = setting("animate") !== false; } catch (e) { /* not registered */ }
+      this.view.animate = on;
+      const anim = on && !this.minimized && this.view.isAnimated();
+      if (anim !== this._playing) { this._playing = anim; this.view.play(anim); }
+      if (anim) this.view.tickMedia();
       sizeCanvas(this.canvasEl, this.stage, Math.min(0.75, Number(setting("quality")) || 0.75));
       this.view.render({forPlayers: true});
       const t = this.element?.querySelector(".window-title"); if (t) t.textContent = this.title;
-    });
+      if (anim) this._tmo = setTimeout(() => { this._tmo = null; this._raf = requestAnimationFrame(frame); }, 30);   // ~30 fps while something animates
+    };
+    this._raf = requestAnimationFrame(frame);
   }
 
   async refreshTokens() {
@@ -510,7 +534,7 @@ export class PovViewer extends ApplicationV2 {
     this.applyLive(this.lastLive);
   }
 
-  stopLive() { this.ro?.disconnect(); this.ro = null; this.view?.dispose(); this.view = null; this.liveScene = null; }
+  stopLive() { clearTimeout(this._tmo); cancelAnimationFrame(this._raf); this._tmo = this._raf = null; this.ro?.disconnect(); this.ro = null; this.view?.play(false); this.view?.dispose(); this.view = null; this.liveScene = null; }
 
   async close(options) { this.stopLive(); PovViewer.instance = null; return super.close(options); }
 }

@@ -1,6 +1,26 @@
 // Vantage - camera + scene state around one renderer (used by the GM window and the players' live view)
 import {PovRenderer} from "./renderer.js";
-import {buildWorld, buildStandees, floorAt, heightAt, coverAt, standAt} from "./world.js";
+import {buildWorld, buildStandees, floorAt, heightAt, coverAt, standAt, playFloor, floorFrame} from "./world.js";
+
+const hash1 = x => { const s = Math.sin(x * 127.1 + 1.7) * 43758.5453; return s - Math.floor(s); };
+const noise1 = x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return hash1(i) * (1 - u) + hash1(i + 1) * u; };
+const hsv = (h, s, v) => { const f = n => { const k = (n + h * 6) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)]; };
+/** a scene light at time t (s), following its Foundry animation: torches flicker, pulses breathe, sirens sweep, chroma cycles */
+export function animLight(l, t, k = 0) {
+  const a = l.anim; if (!a) return l;
+  const sp = Math.max(0.1, a.speed) / 5, amp = Math.min(1, Math.max(0, a.intensity) / 10), ph = k * 1.731;
+  let f = 1, col = null;
+  switch (a.type) {
+    case "torch": case "flame": case "fairy": case "starlight": case "smokepatch":
+      f = 1 - amp * 0.6 * (noise1(t * 7 * sp + ph) * 0.7 + noise1(t * 19 * sp + ph * 3) * 0.3); break;
+    case "chroma": case "rainbowswirl": case "radialrainbow": col = hsv((t * 0.12 * sp + k * 0.137) % 1, 0.85, 1); break;
+    case "siren": case "revolving": f = 1 - amp * 0.85 * (1 - Math.pow(0.5 + 0.5 * Math.cos(t * 5 * sp + ph), 6)); break;
+    case "fog": case "ghost": f = 1 - amp * 0.4 * (0.5 + 0.5 * Math.sin(t * 0.9 * sp + ph)); break;
+    default: f = 1 - amp * 0.55 * (0.5 + 0.5 * Math.sin(t * 2.4 * sp + ph));   // pulse, wave, energy, emanation, dome...
+  }
+  const c = col ? [l.r, l.g, l.b].map((v, i) => v + (col[i] * Math.max(l.r, l.g, l.b, 0.6) - v) * Math.max(amp, 0.5)) : [l.r, l.g, l.b];
+  return {...l, r: c[0], g: c[1], b: c[2], intensity: l.intensity * f};
+}
 
 const D2R = Math.PI / 180;
 const norm = v => { const l = Math.hypot(...v) || 1; return v.map(x => x / l); };
@@ -53,9 +73,19 @@ export class PovView {
       // a light on a raised area / stairs / height-map slope sits on top of it, not buried inside
       const fl = standAt(W, l.x, l.y, l.elevation ?? 0) ?? floorAt(W, l.x, l.y);
       return {x: l.x, y: (Math.max(l.elevation ?? 0, fl) + 4) * W.ppf, z: l.y, radius: Math.max(1, l.range) * W.ppf * 1.8,
-        r: l.color[0], g: l.color[1], b: l.color[2], intensity: 0.9 * (l.alpha ?? 0.5) + 0.3};
+        r: l.color[0], g: l.color[1], b: l.color[2], intensity: 0.9 * (l.alpha ?? 0.5) + 0.3, anim: l.anim ?? null};
     });
   }
+
+  /** anything that changes by itself (video map art, animated lights, weather): the window keeps drawing while true */
+  isAnimated() {
+    const W = this.world; if (!W) return false;
+    return !!(W.hasVideo || this.lights.some(l => l.anim) || (this.opts.weather && this.opts.weather !== "none"));
+  }
+  /** start/stop video map art */
+  play(on) { playFloor(this.world, on); }
+  /** copy the current video frame into the floor texture */
+  tickMedia() { const f = floorFrame(this.world); if (f) this.r.updateFloor(f); }
 
   // ---------------------------------------------------------------- camera
   eyeFrom(tok, {faceToward} = {}) {
@@ -125,7 +155,10 @@ export class PovView {
     const showHidden = !forPlayers && this.opts.showHidden !== false;
     // nearest lights first (to what you're looking at: the eye, or the overview's target)
     const ref = this.cam.mode === "orbit" ? this.cam.target : v.pos;
-    const lights = [...this.lights].sort((a, b) => Math.hypot(a.x - ref[0], a.z - ref[2]) - Math.hypot(b.x - ref[0], b.z - ref[2]));
+    const t = this.time ?? performance.now() / 1000;
+    // animated lights follow the clock unless animation is off (then they hold still, as in Foundry with animation off)
+    const live = this.animate !== false;
+    const lights = this.lights.map((l, k) => live ? animLight(l, t, k) : l).sort((a, b) => Math.hypot(a.x - ref[0], a.z - ref[2]) - Math.hypot(b.x - ref[0], b.z - ref[2]));
     const gp = this.world.gridPx || this.world.ppf * 5;
     const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     const st = this.standees
@@ -160,7 +193,7 @@ export class PovView {
     }
     // haze starts behind what an overview looks at, so a far-away overview isn't murky
     const fogStart = this.cam.mode === "orbit" ? this.cam.dist * 0.8 : 0;
-    this.r.render(v, lights, st, {fogStart, ...this.opts, ...cut});
+    this.r.render(v, lights, st, {fogStart, ...this.opts, time: live ? t : 0, ...cut});
   }
 
   snapshot({width = 1600, quality = 0.82, forPlayers = true} = {}) {

@@ -613,6 +613,14 @@ export class PovRenderer {
     this.tex.ao = at;
   }
 
+  /** replace the floor art (a video frame or a re-composited canvas) - for animated maps */
+  updateFloor(src) {
+    const gl = this.gl, t = this.tex.floor; if (!t || !src) return;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, src); gl.generateMipmap(gl.TEXTURE_2D); } catch (e) { /* frame not ready */ }
+  }
+
   setAtlas(atlasCanvas) {
     const gl = this.gl;
     if (this.tex.atlas) gl.deleteTexture(this.tex.atlas);
@@ -667,7 +675,7 @@ export class PovRenderer {
     this._pass(this.scene, sceneRT, w, h, u => {
       this._bindTex(0, this.tex.floor, u.uFloor); this._bindTex(1, this.tex.height, u.uHeight); this._bindTex(2, this.tex.atlas, u.uAtlas); this._bindTex(3, this.tex.max, u.uMax); this._bindTex(4, this.tex.ao, u.uAOTex); gl.uniform1i(u.uMaxLod, this.maxLod);
       gl.uniform2f(u.uWorld, W.W, W.H); gl.uniform2f(u.uHRes, W.hw, W.hh); gl.uniform2f(u.uRes, w, h);
-      gl.uniform1f(u.uPpf, W.ppf); gl.uniform1f(u.uMaxH, W.maxH * W.ppf); gl.uniform1f(u.uMinH, W.minH * W.ppf);
+      gl.uniform1f(u.uTime ?? null, opts.time ?? 0); gl.uniform1f(u.uPpf, W.ppf); gl.uniform1f(u.uMaxH, W.maxH * W.ppf); gl.uniform1f(u.uMinH, W.minH * W.ppf);
       gl.uniform1f(u.uTanX, Math.tan((cam.fov * Math.PI / 180) / 2)); gl.uniform1f(u.uFogFt, (opts.fogFt ?? 250) * (M?.fogK ?? 1)); gl.uniform1f(u.uFogStart, opts.fogStart ?? 0);
       gl.uniform3fv(u.uCamPos, cam.pos); gl.uniform3fv(u.uCamF, cam.f); gl.uniform3fv(u.uCamR, cam.r); gl.uniform3fv(u.uCamU, cam.u);
       gl.uniform3fv(u.uTrim, opts.trim ?? [0.2, 1.0, 1.1]);
