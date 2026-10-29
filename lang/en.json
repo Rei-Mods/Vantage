@@ -28,6 +28,14 @@
         "Name": "Glow trim colour",
         "Hint": "The glowing strip along the top of walls and platform edges (hex colour)."
       },
+      "wallSkin": {
+        "Name": "Wall skin",
+        "Hint": "What walls and doors are made of in the 3D view, to fit your maps. Raised areas are built of it too for natural materials (stone, wood, marble...); sci-fi skins keep them plain metal. Each scene can pick its own in Scene Config > Vantage."
+      },
+      "mood": {
+        "Name": "Lighting mood",
+        "Hint": "The light of the 3D view. Automatic keeps the light painted on the map. A mood tints it and adds a sun or moon (with shadows when Shadows is Full), its sky, haze and glow. Each scene can pick its own in Scene Config > Vantage."
+      },
       "fogDistance": {
         "Name": "Haze distance (ft)",
         "Hint": "Smaller = foggier."
@@ -140,7 +148,41 @@
       "RaiseDarkHint": "Override the world setting for this scene (handy for night maps with dark floors).",
       "UseWorld": "World setting",
       "On": "On",
-      "Off": "Off"
+      "Off": "Off",
+      "WallSkin": "Wall skin",
+      "WallSkinHint": "What this scene's walls are made of. Empty = the world setting.",
+      "Mood": "Lighting mood",
+      "MoodHint": "The light of this scene in 3D: a sun, moon or night glow to match the map's vibe. Empty = the world setting.",
+      "SunAz": "Sun direction (degrees)",
+      "SunAzAuto": "the mood's own",
+      "SunAzHint": "Where the sun or moon stands, as a compass bearing: 0 = top of the map, 90 = right, 180 = bottom, 270 = left. Match the shadows painted on the map. Empty = the mood's own."
+    },
+    "Skins": {
+      "neon": "Neon panels (sci-fi)",
+      "concrete": "Concrete",
+      "brick": "Brick",
+      "stone": "Castle stone",
+      "rock": "Rough rock (caves)",
+      "wood": "Wooden planks",
+      "timber": "Timber and plaster",
+      "steel": "Riveted steel",
+      "scrap": "Corrugated scrap",
+      "marble": "Marble and gold",
+      "hedge": "Hedge",
+      "sandstone": "Sandstone",
+      "map": "Match the map (its own colours)"
+    },
+    "Moods": {
+      "auto": "Automatic (the map's own light)",
+      "noon": "Bright sun",
+      "golden": "Golden hour",
+      "overcast": "Overcast",
+      "dusk": "Dusk",
+      "moon": "Moonlight",
+      "neon": "Neon night",
+      "torch": "Torchlit (underground)",
+      "toxic": "Toxic haze",
+      "blood": "Blood moon"
     }
   }
 }

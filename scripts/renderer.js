@@ -16,6 +16,9 @@ uniform vec3 uCamPos, uCamF, uCamR, uCamU, uTrim, uFogCol;
 uniform vec4 uCap; uniform vec3 uCapRH;   // corridor: radius, cut height at the target, camera height
 uniform int uNL, uNS, uShadowN;
 uniform float uAO;
+uniform int uSkin;                                   // wall skin (0 = neon panels, see WALL_SKINS)
+uniform float uMood, uLightK, uSat, uSunShadow, uTrimK, uKeep;   // uKeep: how much of the map's bright (painted glowing) art stays lit   // uMood 0 = automatic (the map's own light), 1 = a lighting mood
+uniform vec3 uSunDir, uSunCol, uAmb, uSkyTop, uSkyHor;
 uniform vec4 uLPos[${MAX_LIGHTS}], uLCol[${MAX_LIGHTS}];
 uniform vec4 uSPos[${MAX_STANDEES}], uSUV[${MAX_STANDEES}], uSInfo[${MAX_STANDEES}], uSTint[${MAX_STANDEES}], uSRing[${MAX_STANDEES}];
 
@@ -81,6 +84,144 @@ float aoSide(vec3 p, vec2 n2, float texel){
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
   return mix(mix(hash(i), hash(i+vec2(1,0)), f.x), mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y); }
+// smoothstep that is also defined when edge0 > edge1 (a falling edge)
+float sstep(float e0, float e1, float x){ float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
+float fbm(vec2 p){ return 0.55 * vnoise(p) + 0.3 * vnoise(p * 2.03 + 7.1) + 0.15 * vnoise(p * 4.1 + 3.3); }
+
+// sun / moon shadow: march toward the sun over the max-height pyramid, on coarser cells as the steps grow
+float sunShadow(vec3 p){
+  if (uSunShadow < 0.5) return 1.0;
+  vec3 d = uSunDir; if (d.y < 0.02) return 1.0;
+  float texel = uWorld.x / uHRes.x, res = 1.0;
+  float t = (2.5 + hash(p.xz * 0.531) * 2.0) * texel;
+  for (int i = 0; i < 64; i++) {
+    vec3 q = p + d * t;
+    if (q.y > uMaxH + uPpf || q.x < 0.0 || q.z < 0.0 || q.x > uWorld.x || q.z > uWorld.y) break;
+    float stp = max(1.5 * texel, 0.3 * uPpf) * (1.0 + 0.08 * float(i));
+    int lv = int(clamp(floor(log2(stp / texel)) - 1.0, 0.0, float(uMaxLod)));
+    float cs = texel * exp2(float(lv));
+    ivec2 ij = min(ivec2(floor(q.xz / cs)), textureSize(uMax, lv) - 1);
+    float h = min(texelFetch(uMax, ij, lv).r * uPpf, cutLim(q.xz, distance(q, uCamPos)));
+    float dh = q.y + 0.25 * uPpf - h;
+    if (dh < 0.0) return 0.0;
+    res = min(res, 7.0 * dh / t);
+    t += stp;
+  }
+  return clamp(res, 0.0, 1.0);
+}
+
+// ---- wall skins. u = ft along the face, y = ft up, dt = ft below the wall's top, foot = ft above the floor in front,
+//      px = how many ft one pixel covers here (fine patterns fade out instead of shimmering)
+float dtl(float size, float px){ return clamp(1.0 - 2.0 * px / size, 0.0, 1.0); }
+// blocks w x h ft, every other row shifted by off: (column, row, distance to the nearest joint in ft)
+vec3 blocks(float u, float y, float w, float h, float off){
+  float row = floor(y / h), uu = u / w + off * mod(row, 2.0);
+  vec2 f = vec2(fract(uu) * w, fract(y / h) * h);
+  return vec3(floor(uu), row, min(min(f.x, w - f.x), min(f.y, h - f.y)));
+}
+vec3 woodCol(float u, float y, float px, float plank){
+  float pl = floor(u / plank), f = fract(u / plank);
+  vec3 c = vec3(0.36, 0.22, 0.12) * (0.72 + 0.45 * hash(vec2(pl, 3.7)));
+  c *= 1.0 + 0.10 * sin((f * 9.0 + vnoise(vec2(pl * 5.3, y * 0.7)) * 5.0) * 6.2831) * dtl(plank * 0.15, px);
+  return c * mix(1.0, 0.35, sstep(0.05, 0.02, min(f, 1.0 - f) * plank) * dtl(0.08, px));
+}
+vec3 hazard(float u, float foot){ return mod(u + foot, 1.0) < 0.5 ? vec3(0.78, 0.60, 0.10) : vec3(0.07); }
+vec3 wallSkin(int sk, float u, float y, float dt, float foot, vec2 uv, vec2 xz, vec2 n2, bool door, float px){
+  vec3 c;
+  if (sk == 1) {            // concrete: poured panels, form-tie holes, rain streaks
+    c = vec3(0.47, 0.47, 0.45) * (0.84 + 0.28 * fbm(vec2(u, y) * 0.55)) * (0.92 + 0.08 * vnoise(vec2(u * 3.0, y * 0.22)));
+    c *= 1.0 - 0.28 * sstep(0.05, 0.02, blocks(u, y, 4.0, 2.0, 0.0).z) * dtl(0.1, px);
+    c *= 1.0 - 0.55 * sstep(0.09, 0.05, length(vec2(mod(u, 2.0) - 1.0, mod(y, 2.0) - 1.0))) * dtl(0.15, px);
+    if (door) c = vec3(0.24, 0.26, 0.29) * (0.9 + 0.2 * vnoise(vec2(u, y) * 2.0));
+  } else if (sk == 2) {     // brick: running bond, warm reds, pale mortar
+    vec3 b = blocks(u, y, 1.0, 0.4, 0.5);
+    vec3 brick = mix(vec3(0.40, 0.14, 0.09), vec3(0.60, 0.28, 0.17), hash(b.xy + 0.37)) * (0.86 + 0.22 * vnoise(vec2(u, y) * 6.0));
+    vec3 mortar = vec3(0.56, 0.53, 0.48);
+    c = mix(mix(vec3(0.50, 0.25, 0.16), mortar, 0.18), mix(brick, mortar, sstep(0.045, 0.02, b.z)), dtl(0.12, px));
+    if (door) c = woodCol(u, y, px, 0.55) * 0.85;
+  } else if (sk == 3) {     // castle stone: big ashlar blocks, a darker plinth
+    vec3 b = blocks(u, y, 2.2, 1.1, 0.5);
+    c = mix(vec3(0.34, 0.33, 0.31), vec3(0.54, 0.52, 0.47), hash(b.xy + 1.3)) * (0.8 + 0.35 * fbm(vec2(u, y) * 1.4));
+    c *= mix(0.9, mix(0.4, 1.0, smoothstep(0.03, 0.1, b.z)), dtl(0.25, px));
+    if (foot < 1.2) c *= 0.85;
+    if (door) { c = woodCol(u, y, px, 0.6) * 0.9; if (abs(mod(foot, 2.5) - 1.25) > 1.1) c = vec3(0.10, 0.10, 0.11); }   // iron bands
+  } else if (sk == 4) {     // rough rock: strata and cracks (caves, mines)
+    c = vec3(0.21, 0.20, 0.19) * (0.6 + 0.75 * fbm(vec2(u * 0.45 + y * 0.15, y * 0.8))) * (0.82 + 0.18 * sin(y * 2.2 + fbm(vec2(u * 0.35, y * 0.2)) * 5.0));
+    c *= mix(1.0, 0.45, sstep(0.035, 0.01, abs(vnoise(vec2(u, y) * 1.3) - 0.5)) * dtl(0.2, px));
+    if (door) c = woodCol(u, y, px, 0.7) * 0.7;
+  } else if (sk == 5) {     // wooden planks with a top rail and a mid rail
+    c = woodCol(u, y, px, 0.8);
+    if (dt < 0.45 || abs(foot - 3.0) < 0.22) c = woodCol(y, u, px, 0.5) * 0.8;
+    if (door) { c *= 0.85; if (abs(mod(foot, 3.0) - 1.5) > 1.32) c = vec3(0.11, 0.10, 0.10); }
+  } else if (sk == 6) {     // timber & plaster (half-timbered)
+    vec3 plaster = vec3(0.72, 0.68, 0.58) * (0.9 + 0.14 * fbm(vec2(u, y) * 1.8));
+    vec3 beam = vec3(0.23, 0.14, 0.08) * (0.85 + 0.3 * vnoise(vec2(u * 4.0, y * 0.4)));
+    float pu = mod(u, 5.0);
+    bool bm = dt < 0.5 || foot < 0.5 || abs(foot - 4.6) < 0.24 || pu < 0.3 || pu > 4.7;
+    if (!bm && foot > 0.5 && foot < 4.36 && mod(floor(u / 5.0), 3.0) < 1.0) bm = abs(pu - ((foot - 0.5) / 3.86 * 4.4 + 0.3)) < 0.26;   // a brace in every third panel
+    c = bm ? beam : plaster;
+    if (door) c = woodCol(u, y, px, 0.6);
+  } else if (sk == 7) {     // riveted steel plates, rust, hazard stripes along the foot
+    vec3 b = blocks(u, y, 4.0, 3.0, 0.5);
+    c = vec3(0.33, 0.35, 0.38) * (0.85 + 0.22 * hash(b.xy + 2.1)) * (0.92 + 0.12 * vnoise(vec2(u, y) * 3.0));
+    c = mix(c, vec3(0.36, 0.20, 0.10), smoothstep(0.62, 0.82, fbm(vec2(u, y) * 0.7)) * 0.55);
+    float k = dtl(0.15, px);
+    c *= mix(1.0, 0.4, sstep(0.04, 0.02, b.z) * k);
+    c *= 1.0 + 0.35 * k * step(0.1, b.z) * step(b.z, 0.2) * step(fract((u + y) * 2.0), 0.14);
+    if (foot < 0.7) c = hazard(u, foot);
+    if (door) { c *= 0.75; if (abs(foot - 3.4) < 0.25) c = hazard(u, foot); }
+  } else if (sk == 8) {     // corrugated scrap sheets, mixed paint and rust
+    float f = fract(u / 3.0), hs = hash(vec2(floor(u / 3.0), floor(y / 6.0)));
+    c = hs < 0.3 ? vec3(0.44, 0.24, 0.12) : hs < 0.55 ? vec3(0.22, 0.36, 0.34) : hs < 0.8 ? vec3(0.42, 0.42, 0.40) : vec3(0.46, 0.13, 0.10);
+    c *= 1.0 - 0.22 * dtl(0.12, px) * (0.5 + 0.5 * sin(u * 6.2831 / 0.33));
+    c = mix(c, vec3(0.38, 0.18, 0.08), smoothstep(0.55, 0.78, fbm(vec2(u, y) * 0.65)) * 0.75);
+    if (f < 0.015 || f > 0.985 || abs(mod(y, 6.0) - 3.0) > 2.93) c *= 0.35;
+    if (door) c *= 0.7;
+  } else if (sk == 9) {     // white marble with veins, gold bands at the top and foot
+    vec3 b = blocks(u, y, 3.0, 1.5, 0.5);
+    c = vec3(0.86, 0.85, 0.81) * (0.93 + 0.08 * hash(b.xy + 4.4));
+    c = mix(c, vec3(0.52, 0.52, 0.56), sstep(0.06, 0.0, abs(sin(u * 0.7 + y * 0.45 + fbm(vec2(u, y) * 0.8) * 5.0))) * 0.7 * dtl(0.08, px));
+    c *= mix(1.0, 0.78, sstep(0.03, 0.01, b.z) * dtl(0.1, px));
+    vec3 gold = vec3(0.95, 0.72, 0.30) * (0.85 + 0.3 * vnoise(vec2(u * 2.0, y)));
+    if ((dt > 0.3 && dt < 0.75) || foot < 0.4) c = gold;
+    if (door) { c = vec3(0.30, 0.19, 0.11) * (0.85 + 0.25 * vnoise(vec2(u * 6.0, y * 0.5))); if (abs(foot - 3.5) < 0.15) c = gold; }
+  } else if (sk == 10) {    // hedge: leafy green, darker toward the roots
+    vec2 q = vec2(u, y);
+    c = vec3(0.09, 0.22, 0.07) + vec3(0.10, 0.17, 0.05) * fbm(q * 2.6) + vec3(0.16, 0.22, 0.07) * pow(vnoise(q * 7.0), 3.0) * dtl(0.12, px);
+    c *= mix(0.55, 1.0, smoothstep(0.0, 3.0, foot)) * (dt < 0.4 ? 1.15 : 1.0);
+    if (door) c = woodCol(u, y, px, 0.45) * 1.1;   // a garden gate
+  } else if (sk == 11) {    // sandstone: warm layered blocks, weathered at the foot
+    c = vec3(0.70, 0.55, 0.37) * (0.86 + 0.18 * fbm(vec2(u * 0.8, y * 3.0))) * (0.92 + 0.08 * sin(y * 4.0 + vnoise(vec2(u * 0.2, y)) * 3.0));
+    c *= mix(1.0, 0.74, sstep(0.05, 0.015, blocks(u, y, 3.0, 1.5, 0.5).z) * dtl(0.12, px));
+    c *= mix(0.82, 1.0, smoothstep(0.0, 2.0, foot));
+    if (door) c = woodCol(u, y, px, 0.6) * 0.9;
+  } else {                  // 12: match the map - the floor's own colours next to the wall, in plain panels
+    c = textureLod(uFloor, (xz + n2 * 2.0 * uPpf) / uWorld, 4.5).rgb * 1.05;
+    c *= mix(1.0, 0.7, sstep(0.05, 0.02, blocks(u, y, 4.0, 4.0, 0.0).z) * dtl(0.12, px));
+    if (dt < 0.25) c *= 1.25;
+    if (door) c *= 0.7;
+  }
+  return c;
+}
+// what raised areas (crates, counters, daises) are built of: sci-fi skins keep plain metal (0); natural ones use their
+// material (timber -> wood, hedge -> stone planters); "match the map" stays the map's colours
+int raisedSkin(int sk){ return (sk == 1 || sk == 7 || sk == 8) ? 0 : sk == 6 ? 5 : sk == 10 ? 3 : sk; }
+// the tops of walls (seen from above) in the skin's colour
+vec3 skinTop(int sk, vec2 xz, vec2 uv){
+  vec2 q = xz / uPpf; float n = 0.85 + 0.3 * vnoise(q * 1.7);
+  if (sk == 1) return vec3(0.46, 0.46, 0.44) * n;
+  if (sk == 2) return vec3(0.50, 0.24, 0.16) * n;
+  if (sk == 3) return vec3(0.48, 0.46, 0.42) * n;
+  if (sk == 4) return vec3(0.20, 0.19, 0.18) * n;
+  if (sk == 5) return vec3(0.40, 0.26, 0.14) * n;
+  if (sk == 6) return vec3(0.26, 0.17, 0.09) * n;
+  if (sk == 7) return vec3(0.36, 0.38, 0.41) * n;
+  if (sk == 8) return vec3(0.40, 0.29, 0.20) * n;
+  if (sk == 9) return vec3(0.88, 0.86, 0.82) * (0.95 + 0.05 * n);
+  if (sk == 10) return vec3(0.14, 0.32, 0.10) * (0.7 + 0.6 * vnoise(q * 5.0));
+  if (sk == 11) return vec3(0.72, 0.58, 0.40) * n;
+  return textureLod(uFloor, uv, 4.5).rgb * 1.15;
+}
 
 void main(){
   vec2 ndc = vUv * 2.0 - 1.0;
@@ -139,6 +280,8 @@ void main(){
     if (side) { vec2 inward = normalize(g); hb = max(hb, hAt(p.xz + inward * texel * 1.5)); kd = kindAt(p.xz + inward * texel * 1.0); }
     vec2 n2 = length(g) > 1e-4 ? normalize(-g) : -normalize(d.xz + 1e-5);
     vec3 N = side ? vec3(n2.x, 0.0, n2.y) : vec3(0.0, 1.0, 0.0);
+    float glow = 0.0; vec3 glowCol = uTrim;   // self-lit bits (glow trims, token rings): a dark mood doesn't dim them
+    float pxFt = t * 2.0 * uTanX / uRes.x / uPpf / (side ? max(abs(dot(d, N)), 0.25) : max(abs(d.y), 0.25));
     if (!side) {
       col = texture(uFloor, uv).rgb;
       if (cut) {
@@ -149,13 +292,14 @@ void main(){
           vec2 off = q == 0 ? vec2(ce, 0.0) : q == 1 ? vec2(-ce, 0.0) : q == 2 ? vec2(0.0, ce) : vec2(0.0, -ce);
           if (hAt(p.xz + off) <= cutLim(p.xz + off, t) + 0.5 * uPpf) rim = true;
         }
-        if (rim) col = mix(col, uTrim, 0.55);
+        if (rim) glow = 0.55;
       }
       else if (kd == 1) col = vec3(0.13, 0.15, 0.19) * (0.75 + 0.5 * vnoise(p.xz / (6.0 * uPpf)));
       else if (kd == 6) {   // gentle height-map slopes: shade by the slope so bumps read as 3D
         vec3 tn = normalize(vec3(-g.x / (2.0 * e), 1.0, -g.y / (2.0 * e)));
         col *= 0.55 + 0.55 * clamp(dot(tn, normalize(vec3(0.35, 0.8, -0.45))), 0.0, 1.0);
       }
+      else if ((kd == 2 || kd == 3) && uSkin != 0) col = mix(skinTop(uSkin, p.xz, uv), col, 0.2);   // wall tops wear the skin
       // token bases: soft contact shadow + coloured ring
       for (int s = 0; s < ${MAX_STANDEES}; s++) {
         if (s >= uNS) break;
@@ -170,39 +314,62 @@ void main(){
             col = mix(col, tx.rgb * uSTint[s].rgb, tx.a * uSTint[s].a);
           }
         } else if (dist < r) col *= 0.45 + 0.55 * pow(dist / r, 2.0);
-        if (uSRing[s].a > 0.5 && abs(dist - r) < max(r * 0.07, 1.5 * texel)) col = uSRing[s].rgb * 1.6;
+        if (uSRing[s].a > 0.5 && abs(dist - r) < max(r * 0.07, 1.5 * texel)) { glow = 1.0; glowCol = uSRing[s].rgb * 1.6; }
       }
     } else {
       vec3 base = mix(vec3(0.20, 0.22, 0.25), textureLod(uFloor, uv, 3.0).rgb, 0.35);
       float rel = clamp(1.0 - (hb - p.y) / (30.0 * uPpf), 0.0, 1.0);
+      float dt = (hb - p.y) / uPpf;
+      float foot = (p.y - hAt(p.xz + n2 * texel * 3.0)) / uPpf;   // ft above the floor in front of this face
+      float fu = dot(p.xz, vec2(-n2.y, n2.x)) / uPpf;               // ft along the face
       col = base * (0.45 + 0.55 * rel);
       if (kd == 1) {
         float strata = 0.8 + 0.2 * sin(p.y / (1.5 * uPpf) + (p.x + p.z) / (11.0 * uPpf)) + 0.08 * sin(p.y / (3.5 * uPpf) - (p.x - p.z) / (5.6 * uPpf));
         col = vec3(0.15, 0.17, 0.21) * (0.7 + 0.6 * vnoise(p.xz / (6.0 * uPpf))) * strata * (0.55 + 0.45 * rel);
-      } else if (kd == 5) {
+      } else if (kd == 5 && raisedSkin(uSkin) == 0) {
         // raised area (crate, console, dais): plain dark metal, a soft lighter lip at the top, no glow trim
         // the top's own colour tints the metal a little, darker toward the foot; panel seams every 2 ft and down the sides
         col = mix(vec3(0.15, 0.17, 0.20), textureLod(uFloor, uv, 6.5).rgb, 0.3) * (0.62 + 0.38 * rel);
-        if ((hb - p.y) / uPpf < 0.12) col = mix(col, textureLod(uFloor, uv, 1.0).rgb, 0.6) * 1.35;
+        if (dt < 0.12) col = mix(col, textureLod(uFloor, uv, 1.0).rgb, 0.6) * 1.35;
         if (abs(mod(p.y / uPpf, 2.0) - 1.0) > 0.95) col *= 0.72;
-        if (abs(mod((p.x + p.z) / uPpf, 3.0) - 1.5) > 1.44) col *= 0.8;
+        if (abs(mod(fu, 3.0) - 1.5) > 1.44) col *= 0.8;
+      } else if (kd == 5) {
+        // raised areas in a skinned scene are built of the same material, with the top's art showing at the lip
+        col = wallSkin(raisedSkin(uSkin), fu, p.y / uPpf, dt, foot, uv, p.xz, n2, false, pxFt) * (0.62 + 0.38 * rel);
+        if (dt < 0.12) col = mix(col, textureLod(uFloor, uv, 1.0).rgb, 0.6) * 1.2;
       } else if (kd == 6) {
         // height-map terrain: the map art carries down the slope
         col = texture(uFloor, uv).rgb * (0.6 + 0.4 * rel);
       } else if (kd == 4) {
         // stair risers: plain metal with a thin glowing nosing on every step
         col = base * (0.75 + 0.25 * rel);
-        if ((hb - p.y) / uPpf < 0.14) col = uTrim * 0.85;
-      } else {
-        float yf = p.y / uPpf, hf = (p.x + p.z) / uPpf;
-        bool seam = abs(mod(yf, 4.0) - 2.0) > 1.85 || abs(mod(hf, 5.0) - 2.5) > 2.42;
+        if (dt < 0.14) { glow = 1.0; glowCol = uTrim * 0.85; }
+      } else if (uSkin == 0) {
+        // neon panels: dark metal, panel seams, a glowing trim strip under the top, doors tinted teal
+        bool seam = abs(mod(p.y / uPpf, 4.0) - 2.0) > 1.85 || abs(mod(fu, 5.0) - 2.5) > 2.42;
         if (seam) col *= 0.45;
         if (kd == 3) col = mix(col, vec3(0.12, 0.45, 0.55), 0.6);
-        float dt = (hb - p.y) / uPpf;
-        if (dt > 0.6 && dt < 1.1) col = uTrim;
+        if (dt > 0.6 && dt < 1.1) glow = 1.0;
+      } else {
+        col = wallSkin(uSkin, fu, p.y / uPpf, dt, foot, uv, p.xz, n2, kd == 3, pxFt) * (0.55 + 0.45 * rel);
       }
-      vec3 key = normalize(vec3(0.35, 0.8, -0.45));
-      col *= 0.5 + 0.5 * clamp(dot(N.xz, key.xz), 0.0, 1.0);
+    }
+    // light: "automatic" keeps the map's own light (walls shaded by a fixed key); a mood tints it, adds a sun (or moon)
+    // with shadows, and scales the scene's lights
+    float keyT = clamp(dot(N.xz, normalize(vec3(0.35, 0.8, -0.45)).xz), 0.0, 1.0);
+    vec3 alb;
+    if (uMood < 0.5) {
+      col = mix(col, glowCol, glow);
+      if (side) col *= 0.5 + 0.5 * keyT;
+      alb = col;
+    } else {
+      alb = col;
+      float ss = (dot(uSunCol, uSunCol) > 0.0 && !cut) ? sunShadow(p + (side ? N * texel * 2.0 : vec3(0.0, 0.25 * uPpf, 0.0))) : 1.0;
+      vec3 lit = side ? uAmb * (0.62 + 0.38 * keyT) + uSunCol * max(dot(N, uSunDir), 0.0) * ss
+                      : uAmb + uSunCol * max(uSunDir.y, 0.0) * ss;
+      col = alb * lit;
+      // at night, what the map paints as glowing (signs, screens, lamps, neon strips) keeps glowing
+      if (!side) col += alb * sstep(0.42, 0.85, dot(alb, vec3(0.299, 0.587, 0.114))) * uKeep;
     }
     // scene lights
     vec3 acc = vec3(0.0);
@@ -216,10 +383,17 @@ void main(){
       if (l < uShadowN && !cut && ndl > 0.0) sh = shadowTo(p + (side ? N * texel * 2.0 : vec3(0.0, 0.2 * uPpf, 0.0)), uLPos[l].xyz);
       acc += fall * ndl * mix(0.12, 1.0, sh) * uLCol[l].rgb;
     }
-    col += acc * (side ? 1.0 : 0.6) * max(col, vec3(0.08)) * 2.2 + acc * 0.12;
+    col += (acc * (side ? 1.0 : 0.6) * max(alb, vec3(0.08)) * 2.2 + acc * 0.12) * uLightK;
+    if (uMood > 0.5) col = mix(col, glowCol * uTrimK, glow);
     if (uAO > 0.0 && !cut) col *= mix(1.0, side ? aoSide(p, n2, texel) : aoFloor(p, t), uAO * 0.85);
     float fog = 1.0 - exp(-max(t - uFogStart * uPpf, 0.0) / (uFogFt * uPpf));
     col = mix(col, uFogCol, fog);
+  } else if (uMood > 0.5) {
+    // a mood's sky: horizon to zenith, the sun's disc and glow; below the horizon it fades into the haze
+    col = mix(uSkyHor, uSkyTop, smoothstep(0.0, 0.6, d.y));
+    if (d.y < 0.0) col = mix(uSkyHor, uFogCol, smoothstep(0.0, 0.3, -d.y));
+    float sd = max(dot(d, uSunDir), 0.0);
+    col += uSunCol * (smoothstep(0.99955, 0.99975, sd) * 4.0 + pow(sd, 16.0) * 0.25);
   } else {
     float jh = exp(-abs(d.y) * 4.0);
     col = mix(vec3(0.01, 0.02, 0.03), uFogCol * 0.55, clamp(uFogCol.b * 1.6 - 0.15, 0.0, 1.0)) + uFogCol * 0.9 * jh;
@@ -246,9 +420,15 @@ void main(){
     float al = tx.a * clamp((1.0 - v) / 0.05, 0.0, 1.0) * uSTint[s].a;
     if (al < 0.01) continue;
     vec3 sc = tx.rgb * uSTint[s].rgb;
+    if (uMood > 0.5) {
+      // figures take the mood's light (and stand in the sun or in shadow); scene lights still pick them out
+      float ss = dot(uSunCol, uSunCol) > 0.0 ? sunShadow(vec3(C.x, C.y + uPpf, C.z)) : 1.0;
+      sc = tx.rgb * (max(uAmb * 1.25 + uSunCol * max(uSunDir.y, 0.25) * ss, vec3(0.36)) + max(uSTint[s].rgb - 0.85, 0.0) * 2.0 * uLightK);
+    }
     sc = mix(sc, uFogCol, 1.0 - exp(-max(ts - uFogStart * uPpf, 0.0) / (uFogFt * uPpf)));
     col = mix(col, sc, al);
   }
+  if (uMood > 0.5) col = max(mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, uSat), 0.0);
   outColor = vec4(col, 1.0);
 }`;
 
@@ -287,6 +467,34 @@ export function fogColour(day = 0, mean = null) {
   if (!mean) return n;
   const k = 0.35 + 0.5 * Math.max(0, Math.min(1, day)), lift = 0.75 + 0.45 * Math.max(0, Math.min(1, day));
   return n.map((v, i) => v + (Math.min(0.75, mean[i] * lift) - v) * k);
+}
+
+/** wall skins, in shader order (Settings > Wall skin, Scene Config > Vantage) */
+export const WALL_SKINS = ["neon", "concrete", "brick", "stone", "rock", "wood", "timber", "steel", "scrap", "marble", "hedge", "sandstone", "map"];
+
+/**
+ * lighting moods ("auto" = the map's own light, as painted). amb: how much of the map's light is left (tint);
+ * sun: sun or moon colour (0 = none), el / az: its height and compass direction in degrees (0 = from the top of the map,
+ * 90 = from the right); sky: [zenith, horizon]; fog: haze colour, fogK: haze distance x; lightK: scene lights x;
+ * sat: saturation; bloom: glow x; trimK: glowing trims x; keep: how much of the map's bright art stays lit (night glow)
+ */
+export const MOODS = {
+  auto: null,
+  noon:     {keep: 0, amb: [0.68, 0.69, 0.72], sun: [0.58, 0.54, 0.46], el: 58, az: 160, sky: [[0.22, 0.44, 0.82], [0.66, 0.78, 0.92]], fog: [0.62, 0.70, 0.80], fogK: 1.6, lightK: 0.55, sat: 1.05, bloom: 0.7},
+  golden:   {keep: 0.1, amb: [0.52, 0.46, 0.50], sun: [1.45, 0.92, 0.48], el: 13, az: 250, sky: [[0.26, 0.34, 0.58], [1.00, 0.62, 0.32]], fog: [0.72, 0.50, 0.34], fogK: 1.2, lightK: 0.8, sat: 1.1, bloom: 1.2},
+  overcast: {keep: 0, amb: [0.84, 0.86, 0.90], sun: [0, 0, 0], el: 60, az: 0, sky: [[0.52, 0.55, 0.60], [0.70, 0.72, 0.75]], fog: [0.58, 0.61, 0.66], fogK: 0.8, lightK: 0.7, sat: 0.72, bloom: 0.6},
+  dusk:     {keep: 0.35, amb: [0.40, 0.36, 0.52], sun: [0.95, 0.42, 0.52], el: 5, az: 275, sky: [[0.08, 0.10, 0.28], [0.90, 0.42, 0.40]], fog: [0.30, 0.22, 0.36], fogK: 1.0, lightK: 1.2, sat: 1.05, bloom: 1.3},
+  moon:     {keep: 0.55, amb: [0.24, 0.30, 0.45], sun: [0.22, 0.28, 0.42], el: 48, az: 40, sky: [[0.01, 0.02, 0.06], [0.06, 0.09, 0.17]], fog: [0.05, 0.08, 0.15], fogK: 0.9, lightK: 2.0, sat: 0.62, bloom: 1.2},
+  neon:     {keep: 1.0, amb: [0.30, 0.22, 0.40], sun: [0, 0, 0], el: 60, az: 0, sky: [[0.03, 0.01, 0.06], [0.18, 0.04, 0.22]], fog: [0.14, 0.03, 0.18], fogK: 0.8, lightK: 3.0, sat: 1.2, bloom: 1.7, trimK: 1.4},
+  torch:    {keep: 0.6, amb: [0.30, 0.22, 0.15], sun: [0, 0, 0], el: 60, az: 0, sky: [[0.0, 0.0, 0.0], [0.04, 0.025, 0.015]], fog: [0.05, 0.03, 0.015], fogK: 0.45, lightK: 3.0, sat: 0.95, bloom: 1.3},
+  toxic:    {keep: 0.3, amb: [0.40, 0.52, 0.28], sun: [0.40, 0.55, 0.16], el: 38, az: 120, sky: [[0.12, 0.20, 0.06], [0.42, 0.55, 0.18]], fog: [0.26, 0.36, 0.12], fogK: 0.55, lightK: 1.1, sat: 0.9, bloom: 1.1},
+  blood:    {keep: 0.45, amb: [0.42, 0.15, 0.13], sun: [0.75, 0.14, 0.08], el: 30, az: 300, sky: [[0.06, 0.0, 0.0], [0.42, 0.06, 0.04]], fog: [0.22, 0.03, 0.03], fogK: 0.7, lightK: 1.3, sat: 1.0, bloom: 1.3}
+};
+/** direction toward the sun for a mood (az: compass degrees, overrides the mood's own) */
+export function sunDirection(mood, az = null) {
+  const M = MOODS[mood]; if (!M) return [0, 1, 0];
+  const a = (Number.isFinite(az) ? az : M.az) * Math.PI / 180, e = M.el * Math.PI / 180;
+  return [Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)];
 }
 
 export class PovRenderer {
@@ -409,6 +617,7 @@ export class PovRenderer {
   render(cam, lights, standees, opts = {}) {
     const gl = this.gl, w = this.canvas.width, h = this.canvas.height, W = this.world, MAX_LIGHTS = this.NL, MAX_STANDEES = this.NS;
     if (!W || !w || !h) return;
+    const M = MOODS[opts.mood] ?? null;
     const sceneRT = this._rt("scene", w, h);
     const bw = Math.max(1, w >> 2), bh = Math.max(1, h >> 2);
     const b1 = this._rt("b1", bw, bh), b1t = this._rt("b1t", bw, bh);
@@ -427,9 +636,17 @@ export class PovRenderer {
       this._bindTex(0, this.tex.floor, u.uFloor); this._bindTex(1, this.tex.height, u.uHeight); this._bindTex(2, this.tex.atlas, u.uAtlas); this._bindTex(3, this.tex.max, u.uMax); this._bindTex(4, this.tex.ao, u.uAOTex); gl.uniform1i(u.uMaxLod, this.maxLod);
       gl.uniform2f(u.uWorld, W.W, W.H); gl.uniform2f(u.uHRes, W.hw, W.hh); gl.uniform2f(u.uRes, w, h);
       gl.uniform1f(u.uPpf, W.ppf); gl.uniform1f(u.uMaxH, W.maxH * W.ppf); gl.uniform1f(u.uMinH, W.minH * W.ppf);
-      gl.uniform1f(u.uTanX, Math.tan((cam.fov * Math.PI / 180) / 2)); gl.uniform1f(u.uFogFt, opts.fogFt ?? 250); gl.uniform1f(u.uFogStart, opts.fogStart ?? 0);
+      gl.uniform1f(u.uTanX, Math.tan((cam.fov * Math.PI / 180) / 2)); gl.uniform1f(u.uFogFt, (opts.fogFt ?? 250) * (M?.fogK ?? 1)); gl.uniform1f(u.uFogStart, opts.fogStart ?? 0);
       gl.uniform3fv(u.uCamPos, cam.pos); gl.uniform3fv(u.uCamF, cam.f); gl.uniform3fv(u.uCamR, cam.r); gl.uniform3fv(u.uCamU, cam.u);
-      gl.uniform3fv(u.uTrim, opts.trim ?? [0.2, 1.0, 1.1]); gl.uniform3fv(u.uFogCol, opts.fogCol ?? fogColour(opts.daylight ?? 0, W.meanCol));
+      gl.uniform3fv(u.uTrim, opts.trim ?? [0.2, 1.0, 1.1]);
+      // the mood: its haze leans a little toward the map's own average colour, so it belongs to the map
+      const fog = opts.fogCol ?? (M ? M.fog.map((v, i) => v * 0.85 + Math.min(0.6, W.meanCol?.[i] ?? v) * 0.15 * (0.4 + M.amb[i])) : fogColour(opts.daylight ?? 0, W.meanCol));
+      gl.uniform3fv(u.uFogCol, fog);
+      gl.uniform1i(u.uSkin ?? null, Math.max(0, WALL_SKINS.indexOf(opts.skin ?? "neon")));
+      gl.uniform1f(u.uMood ?? null, M ? 1 : 0); gl.uniform1f(u.uSunShadow ?? null, (opts.shadowN ?? 4) > 0 ? 1 : 0);
+      gl.uniform1f(u.uKeep ?? null, M?.keep ?? 0); gl.uniform1f(u.uLightK ?? null, M?.lightK ?? 1); gl.uniform1f(u.uSat ?? null, M?.sat ?? 1); gl.uniform1f(u.uTrimK ?? null, M?.trimK ?? 1);
+      gl.uniform3fv(u.uSunDir ?? null, sunDirection(opts.mood, opts.sunAz)); gl.uniform3fv(u.uSunCol ?? null, M?.sun ?? [0, 0, 0]);
+      gl.uniform3fv(u.uAmb ?? null, M?.amb ?? [1, 1, 1]); gl.uniform3fv(u.uSkyTop ?? null, M?.sky[0] ?? [0, 0, 0]); gl.uniform3fv(u.uSkyHor ?? null, M?.sky[1] ?? [0, 0, 0]);
       gl.uniform1f(u.uCutT, opts.cutT ?? 0); gl.uniform1f(u.uCutH, opts.cutH ?? 1e9);
       const cap = opts.cap; gl.uniform4fv(u.uCap, cap ?? [0, 0, 0, 0]); gl.uniform3f(u.uCapRH, cap ? opts.capR : 0, cap ? opts.capH : 1e9, cap ? (opts.capTop ?? opts.capH) : 1e9);
       gl.uniform1i(u.uNL, Math.min(lights.length, MAX_LIGHTS)); gl.uniform1i(u.uNS, ns);
@@ -438,7 +655,7 @@ export class PovRenderer {
       if (u.uSPos) gl.uniform4fv(u.uSPos, SP); if (u.uSUV) gl.uniform4fv(u.uSUV, SU);
       if (u.uSInfo) gl.uniform4fv(u.uSInfo, SI); if (u.uSTint) gl.uniform4fv(u.uSTint, ST); if (u.uSRing) gl.uniform4fv(u.uSRing, SR);
     });
-    const bloom = opts.bloom ?? 1;
+    const bloom = (opts.bloom ?? 1) * (M?.bloom ?? 1);
     if (bloom > 0) {
       this._pass(this.bright, b1, bw, bh, u => this._bindTex(0, sceneRT.tex, u.uSrc));
       for (let k = 0; k < 2; k++) {

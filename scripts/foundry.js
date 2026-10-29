@@ -195,5 +195,12 @@ export function viewOptions(scene = null) {
   const sh = setting("shadows");
   return {trim, fogFt: setting("fogDistance"), bloom: setting("bloom") ? 1 : 0, cutaway: true,
     shadowN: sh === "full" ? 4 : 0, ao: sh === "off" ? 0 : 1, tiltDeg: Number(setting("tiltDeg")) || 40,
-    daylight: daylightOf(scene) * (sceneFlag(scene, "daylightHaze") === false ? 0 : 1)};
+    daylight: daylightOf(scene) * (sceneFlag(scene, "daylightHaze") === false ? 0 : 1), ...lookOf(scene)};
+}
+/** the scene's wall skin, lighting mood and sun direction (Scene Config > Vantage; empty = the world setting) */
+export function lookOf(scene = null) {
+  const get = k => { try { return setting(k); } catch (e) { return undefined; } };
+  const az = Number(sceneFlag(scene, "sunAz"));
+  return {skin: sceneFlag(scene, "wallSkin") ?? get("wallSkin") ?? "neon", mood: sceneFlag(scene, "mood") ?? get("mood") ?? "auto",
+    sunAz: sceneFlag(scene, "sunAz") !== undefined && Number.isFinite(az) ? az : null};
 }

@@ -1,5 +1,6 @@
 // Vantage - see the battlemap in 3D from a token's eyes (or an overview), and show it to the players
-import {MOD, FIGURES, figureOf, L} from "./foundry.js";
+import {MOD, FIGURES, figureOf, L, viewOptions} from "./foundry.js";
+import {WALL_SKINS, MOODS} from "./renderer.js";
 import {PovWindow, PovViewer, onSocket, sendSnapshot} from "./app.js";
 
 const S = k => `VANTAGE.Settings.${k}`;
@@ -13,6 +14,10 @@ Hooks.once("init", () => {
   reg("rockHeight", {type: Number, default: 35, range: {min: 0, max: 120, step: 1}});
   reg("darkThreshold", {type: Number, default: 26, range: {min: 5, max: 80, step: 1}});
   reg("trimColor", {type: String, default: "#3ce6ff"});
+  // the look: what walls are made of, and the light (both can be set per scene in Scene Config > Vantage)
+  const relook = () => { const w = PovWindow.instance; if (w?.view) { w.view.opts = {...w.view.opts, ...viewOptions(w.scene)}; w.requestRender(); } };
+  reg("wallSkin", {type: String, default: "neon", choices: Object.fromEntries(WALL_SKINS.map(k => [k, `VANTAGE.Skins.${k}`])), onChange: relook});
+  reg("mood", {type: String, default: "auto", choices: Object.fromEntries(Object.keys(MOODS).map(k => [k, `VANTAGE.Moods.${k}`])), onChange: relook});
   reg("fogDistance", {type: Number, default: 250, range: {min: 40, max: 1000, step: 10}});
   reg("bloom", {type: Boolean, default: true});
   reg("snapshotWidth", {type: Number, default: 1600, range: {min: 800, max: 2560, step: 160}});
@@ -66,6 +71,10 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const f = app.document?.flags?.[MOD] ?? {};
   const hm = Number.isFinite(Number(f.heightMax)) && f.heightMax !== "" && f.heightMax != null ? f.heightMax : "";
   const rd = f.raiseDark === true ? "true" : f.raiseDark === false ? "false" : "";
+  const opt = (v, label, cur) => `<option value="${v}" ${v === (cur ?? "") ? "selected" : ""}>${escA(label)}</option>`;
+  const skinSel = [opt("", L("Scene.UseWorld"), f.wallSkin), ...WALL_SKINS.map(k => opt(k, L(`Skins.${k}`), f.wallSkin))].join("");
+  const moodSel = [opt("", L("Scene.UseWorld"), f.mood), ...Object.keys(MOODS).map(k => opt(k, L(`Moods.${k}`), f.mood))].join("");
+  const az = Number.isFinite(Number(f.sunAz)) && f.sunAz !== "" && f.sunAz != null ? f.sunAz : "";
   const fs = document.createElement("fieldset");
   fs.className = "vtg-scene";
   fs.innerHTML = `<legend><i class="fa-solid fa-vr-cardboard"></i> ${L("Scene.Legend")}</legend>
@@ -79,6 +88,18 @@ Hooks.on("renderSceneConfig", (app, html) => {
         <option value="true" ${rd === "true" ? "selected" : ""}>${L("Scene.On")}</option>
         <option value="false" ${rd === "false" ? "selected" : ""}>${L("Scene.Off")}</option></select></div>
       <p class="hint">${L("Scene.RaiseDarkHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Scene.WallSkin")}</label>
+      <div class="form-fields"><select name="flags.${MOD}.wallSkin">${skinSel}</select></div>
+      <p class="hint">${L("Scene.WallSkinHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Scene.Mood")}</label>
+      <div class="form-fields"><select name="flags.${MOD}.mood">${moodSel}</select></div>
+      <p class="hint">${L("Scene.MoodHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Scene.SunAz")}</label>
+      <div class="form-fields"><input type="number" name="flags.${MOD}.sunAz" step="5" min="0" max="360" value="${az}" placeholder="${escA(L("Scene.SunAzAuto"))}"></div>
+      <p class="hint">${L("Scene.SunAzHint")}</p>
     </div>`;
   (part.querySelector(".scrollable") ?? part).append(fs);
 });

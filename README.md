@@ -19,7 +19,7 @@ A free, open-source module for [Foundry Virtual Tabletop](https://foundryvtt.com
 
 ---
 
-Vantage turns the scene you're already running into a 3D view you can look around in, from a token's eyes or from above. It needs no extra prep. Your map art becomes the floor, walls and doors rise up, Levels become real heights, regions can become crates, daises and pits, and scene lights glow and cast shadows. Tokens stand up as figures. When the moment calls for it, send the picture to your players with one click, or go **Live** so their screens follow your camera.
+Vantage turns the scene you're already running into a 3D view you can look around in, from a token's eyes or from above. It needs no extra prep. Your map art becomes the floor, walls and doors rise up, Levels become real heights, regions can become crates, daises and pits, and scene lights glow and cast shadows. Tokens stand up as figures. Pick what the walls are made of and a lighting mood (a low sun with long shadows, moonlight, a neon night) so the 3D view fits the map's vibe. When the moment calls for it, send the picture to your players with one click, or go **Live** so their screens follow your camera.
 
 It only draws while the camera moves, so it costs nothing while the window is closed or idle.
 
@@ -47,12 +47,53 @@ It only draws while the camera moves, so it costs nothing while the window is cl
 <p align="center"><img src="docs/images/rise-up.gif" width="80%" alt="A flat arcade map rising into 3D: walls, cabinets and tables grow out of the map art"></p>
 <p align="center"><sub>Everything here comes from the scene's own walls, regions and art (the rise is just for show).</sub></p>
 
-- **Walls and doors rise up.** Sight-blocking walls become 12 ft walls with a glowing trim, and closed doors become 10 ft doors. Secret doors look like plain wall. Open doors and see-through walls stay open, and windows, glass and foliage (limited sight) become low walls you can see over.
+- **Walls and doors rise up.** Sight-blocking walls become 12 ft walls in the [wall skin](#wall-skins-make-the-walls-fit-your-map) you pick, and closed doors become 10 ft doors. Secret doors look like plain wall. Open doors and see-through walls stay open, and windows, glass and foliage (limited sight) become low walls you can see over.
 - **Foundry v14 Levels.** Each level's art rises to its elevation. The view shows the token's level plus the levels it can see. A token standing under a higher floor sees the room it's in, not the inside of the floor above.
 - **Stairs.** Every Region with a *Change Level* behaviour becomes a staircase between its two floors, with glowing step edges. Ladders (very steep, short regions) stay flat.
 - **Rock.** Very dark parts of the map (cave walls, out-of-bounds) can become solid rock. You can turn this off per world or per scene.
 - **Lights.** Scene lights glow on walls and floors. Darkness sources don't glow.
 - **Live updates.** Moving tokens, opening doors, or editing walls, lights, regions or levels updates the 3D view automatically.
+
+### Wall skins: make the walls fit your map
+<p align="center"><img src="docs/images/wall-skins.gif" width="80%" alt="The same arcade corner cycling through every wall skin: neon panels, concrete, brick, castle stone, rough rock, wood, timber and plaster, steel, scrap, marble, hedge, sandstone"></p>
+
+Pick what walls and doors are made of. There are 12 materials:
+
+- **Neon panels**: the default sci-fi look, with a glowing trim.
+- **Concrete**, **Riveted steel** (with hazard stripes along the foot) and **Corrugated scrap**.
+- **Brick**, **Castle stone**, **Rough rock** (caves and mines) and **Sandstone**.
+- **Wooden planks**, **Timber & plaster**, **Marble & gold** and **Hedge**.
+
+You can also pick **Match the map**, which builds the walls from the colours of the floor next to them.
+
+Set a default in the world settings, and give any scene its own skin in **Scene Config → Vantage**. Doors match the skin: wooden doors in brick and stone, a gate in a hedge, hazard stripes on steel. Raised areas use the same material for the natural skins (a stone dais, a wooden counter). With the sci-fi skins they stay plain metal, so consoles still look like consoles.
+
+<p align="center"><img src="docs/images/wall-skins.jpg" width="100%" alt="The same arcade corner with each of the 12 wall skins, labelled"></p>
+
+### Lighting moods: match the map's vibe
+<p align="center"><img src="docs/images/lighting-moods.gif" width="80%" alt="A canyon base cycling through bright sun, golden hour, dusk, moonlight, neon night, toxic haze and blood moon"></p>
+
+**Automatic** keeps the light that's painted on the map. Or pick a mood for the world, or per scene in **Scene Config → Vantage**:
+
+| Mood | What it looks like |
+|---|---|
+| Bright sun | Midday light, short crisp shadows, a blue sky |
+| Golden hour | A low warm sun, long shadows, an orange sky |
+| Overcast | Soft grey daylight with no hard shadows |
+| Dusk | The sun just down: pink horizon, purple shade |
+| Moonlight | A cool blue night. The map's lamps and screens keep glowing |
+| Neon night | Dark with a magenta haze. Scene lights and painted neon blaze |
+| Torchlit | Underground: dark and warm, the haze close in, scene lights carry the room |
+| Toxic haze | Sickly green light and thick haze |
+| Blood moon | A red moon over everything |
+
+<img src="docs/images/ui-scene-look.png" align="right" width="320" alt="The Vantage fields in Foundry's Scene Config: height map, dark rock, wall skin, lighting mood and sun direction">
+
+With *Shadows* on Full, the sun or moon casts real shadows from walls, raised areas and terrain, and figures stand in the light or in the shade. Set **Sun direction** for a scene so the shadows fall the same way as the ones painted on the map. Changing the mood is instant (no rebuild), and players watching *Live* see it too.
+
+<br clear="right">
+
+<p align="center"><img src="docs/images/lighting-moods.jpg" width="100%" alt="Nine moods side by side on the canyon, arcade and club maps"></p>
 
 ### Raised areas: crates, consoles, daises and pits
 <img src="docs/images/ui-region-height.png" align="right" width="330" alt="The Vantage height field in Foundry's Region Config, set to 3">
@@ -97,7 +138,7 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 - **Nothing runs while the window is closed.** While it's open, it only draws when the camera moves.
 - Choose a resolution per computer (Full / Balanced / Fast). Optionally drop to half resolution while moving, for slower machines.
 - The last 2 built levels are remembered, so switching between tokens on different floors is instant after the first time.
-- No libraries and no build step: it's plain WebGL2 (a height-field ray-marcher) in about 2,000 lines of JavaScript.
+- No libraries and no build step: it's plain WebGL2 (a height-field ray-marcher) in about 2,200 lines of JavaScript.
 
 ## Installation
 
@@ -152,6 +193,8 @@ The toolbar has **Eye** and **Overview** to switch camera, a dropdown to choose 
 | A pit, a pool, a sunken floor | A Region with a negative height. |
 | Hills, dunes, rubble, riverbanks | A `<map>_height` image next to the map art. |
 | A night map whose floor is very dark | Turn *Raise dark areas as rock* off (world, or per scene). |
+| Walls that suit a fantasy, modern or wasteland map | A *Wall skin*: castle stone, brick, wood, concrete, scrap… (world, or per scene). |
+| A sunset, a night, a neon club, a torchlit dungeon | A *Lighting mood* in *Scene Config → Vantage*. Set *Sun direction* to match the map's painted shadows. |
 
 ### Making a height map
 Any image editor works: paint the floor black, then paint hills and mounds in lighter greys with soft brushes, and the tallest parts white. You can also ask an image generator to convert the map. This prompt works well (attach the map):
@@ -170,7 +213,9 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 | Raise dark areas as rock | On | Very dark map areas become solid rock. |
 | Rock height (ft above the floor) | 35 | How tall that rock is. |
 | How dark counts as rock | 26 | Brightness 0–255. Higher = more rock. |
-| Glow trim colour | `#3ce6ff` | The glowing strip along wall tops and platform edges. |
+| Glow trim colour | `#3ce6ff` | The glowing strip along wall tops (Neon panels skin) and stair edges. |
+| Wall skin | Neon panels | What walls and doors are made of (12 materials, or Match the map). |
+| Lighting mood | Automatic | The light: the map's own, or a sun, moon or night mood. |
 | Haze distance (ft) | 250 | Smaller = foggier. |
 | Glow (bloom) | On | Bright lights and trims bleed a soft glow. |
 | Snapshot width (px) | 1600 | Size of the picture sent with Show Players. |
@@ -189,7 +234,7 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 ### Per scene, region and token
 | Where | Field | Flag |
 |---|---|---|
-| Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock | `flags.vantage.heightMax`, `flags.vantage.raiseDark` |
+| Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock; Wall skin; Lighting mood; Sun direction (degrees, 0 = top of the map) | `flags.vantage.heightMax`, `flags.vantage.raiseDark`, `flags.vantage.wallSkin`, `flags.vantage.mood`, `flags.vantage.sunAz` |
 | Region Config → Placement → Vantage | Height (ft), negative = pit | `flags.vantage.raise` |
 | Token / Prototype Token Config → Appearance → Vantage 3D figure | Figure, 3D picture | `flags.vantage.figure`, `flags.vantage.standee` |
 | (token or actor flag) | Lie flat like an object | `flags.vantage.flat` |
@@ -240,6 +285,16 @@ Its picture is half-body art. Give the token a full-body *3D picture* in *Token 
 <details><summary><b>Can players see things they shouldn't?</b></summary>
 
 Hidden tokens are never shown to players. Players who open the view themselves (if you allow it) see only the tokens they can see, but the 3D view ignores fog of war.
+</details>
+
+<details><summary><b>The walls look sci-fi on my fantasy map</b></summary>
+
+Pick a *Wall skin* that fits, such as Castle stone, Brick, Wooden planks or Timber & plaster, in the world settings or for just this scene in *Scene Config → Vantage*.
+</details>
+
+<details><summary><b>The shadows fall the wrong way for my map</b></summary>
+
+Set *Sun direction* in *Scene Config → Vantage* to where the light comes from on the map (0 = top, 90 = right, 180 = bottom, 270 = left).
 </details>
 
 <details><summary><b>The picture is blurry while I move</b></summary>

@@ -1,6 +1,7 @@
 // Vantage - the GM's 3D window, the players' viewer, and snapshot/live sharing
 import {PovView} from "./view.js";
-import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions} from "./foundry.js";
+import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf} from "./foundry.js";
+const LOOK_KEYS = ["wallSkin", "mood", "sunAz"];
 
 const {ApplicationV2} = foundry.applications.api;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
@@ -376,7 +377,13 @@ export class PovWindow extends ApplicationV2 {
       "createRegion", "updateRegion", "deleteRegion", "createRegionBehavior", "updateRegionBehavior", "deleteRegionBehavior"])
       on(h, doc => { if (mine(doc)) this._rebuildSoon(); });
     // per-scene overrides (Scene Config > Vantage) changed
-    on("updateScene", (doc, changes) => { if (doc.id === this.scene.id && foundry.utils.hasProperty(changes, `flags.${MOD}`)) this._rebuildSoon(); });
+    on("updateScene", (doc, changes) => {
+      if (doc.id !== this.scene.id || !foundry.utils.hasProperty(changes, `flags.${MOD}`)) return;
+      // the look (skin, mood, sun) only needs a redraw; anything else rebuilds the 3D scene
+      const keys = Object.keys(foundry.utils.flattenObject(changes.flags[MOD] ?? {})).map(k => k.replace(/^-=/, ""));
+      if (this.view && keys.length && keys.every(k => LOOK_KEYS.includes(k))) { this.view.opts = {...this.view.opts, ...viewOptions(doc)}; this.requestRender(); }
+      else this._rebuildSoon();
+    });
   }
 
   async close(options) {
@@ -486,6 +493,7 @@ export class PovViewer extends ApplicationV2 {
     if (!this.view?.world || !msg) return;
     Object.assign(this.view.cam, foundry.utils.deepClone(msg.cam));
     this.view.selfId = msg.selfId;
+    const sc = game.scenes.get(this.liveScene); if (sc) Object.assign(this.view.opts, lookOf(sc));   // the GM may change the mood mid-way
     if (this._raf) return;
     this._raf = requestAnimationFrame(() => {
       this._raf = null;
