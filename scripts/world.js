@@ -4,7 +4,9 @@
 export const KIND = {floor: 0, rock: 1, wall: 2, door: 3, stairs: 4, prop: 5, terrain: 6};
 /** what a raised area can look like from the side (Region Config > Vantage > Looks like), in shader order (0 = plain) */
 export const PROP_LOOKS = ["plain", "stretch", "arcade", "vending", "server", "bookshelf", "crate", "container", "console", "bar", "counter",
-  "fridge", "lockers", "plinth", "barrels", "machine", "dresser", "display", "sandbags", "hay", "kiosk"];
+  "fridge", "lockers", "plinth", "barrels", "machine", "dresser", "display", "sandbags", "hay", "kiosk",
+  "altar", "table", "bed", "hearth", "chest", "sofa", "atm", "jukebox", "reactor", "tires", "dumpster", "car", "shelving", "piano",
+  "stall", "planter", "boulder", "ice", "crystals", "cage"];
 /** how far back "leaning" figures lean (high-angle / top-down token art), degrees from upright (setting tiltDeg) */
 export const TILT_DEG = 40;
 
@@ -344,13 +346,17 @@ export async function buildWorld(data, opts = {}) {
       }
     }
     const ar = az * Math.PI / 180, R = [-Math.cos(ar), -Math.sin(ar)];   // the viewer's right, facing the front
-    let lo = Infinity, hi = -Infinity;
-    for (const k of pr.px) { const x = (k % hw + 0.5) / hs, y = (((k / hw) | 0) + 0.5) / hs, u = x * R[0] + y * R[1]; if (u < lo) lo = u; if (u > hi) hi = u; }
+    let lo = Infinity, hi = -Infinity, flo = Infinity, fhi = -Infinity;
+    const F = [Math.sin(ar), -Math.cos(ar)];   // toward the front
+    for (const k of pr.px) {
+      const x = (k % hw + 0.5) / hs, y = (((k / hw) | 0) + 0.5) / hs, u = x * R[0] + y * R[1], f = x * F[0] + y * F[1];
+      if (u < lo) lo = u; if (u > hi) hi = u; if (f < flo) flo = f; if (f > fhi) fhi = f;
+    }
     const g = Math.round(((az % 360) + 360) % 360 / 360 * 256) & 255;
     for (const k of pr.px) { propData[k * 4] = pr.look; propData[k * 4 + 1] = g; propData[k * 4 + 2] = ri + 1; propData[k * 4 + 3] = 255; }
     let pic = -1;
     if (pr.pic) { const img = await loadImageLike(pr.pic); if (img) { pic = propPics.length; propPics.push(img); } }
-    propInfo.push({lo, w: Math.max(1, hi - lo), pic, seed: (ri * 0.618) % 1, az});
+    propInfo.push({lo, w: Math.max(1, hi - lo), flo, fd: Math.max(1, fhi - flo), pic, seed: (ri * 0.618) % 1, az});
   }
   // front pictures in one atlas (portrait cells)
   let propAtlas = null;

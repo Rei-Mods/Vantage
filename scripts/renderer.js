@@ -326,7 +326,7 @@ vec2 tplAt(vec2 xz, float pxw){
 
 vec3 gEmit;
 vec3 hue3(float h){ return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0); }
-vec3 propFace(int L, int face, float U, float Uf, float Y, float H, float W, vec3 tc, vec3 edge, float px, float seed){
+vec3 propFace(int L, int face, float U, float Uf, float Y, float H, float W, float Us, float D, vec3 tc, vec3 edge, float px, float seed){
   float T = clamp(Y / max(H, 0.5), 0.0, 1.0);
   // a long block of cabinets / machines / racks: one unit every few feet along the front, each a little different
   float unit = L == 2 ? 3.0 : L == 3 ? 3.5 : L == 4 ? 2.2 : L == 11 ? 3.0 : L == 8 ? 4.0 : L == 16 ? 4.0 : 0.0;
@@ -482,6 +482,145 @@ vec3 propFace(int L, int face, float U, float Uf, float Y, float H, float W, vec
     float e = face == 0 ? min(min(U * W, (1.0 - U) * W), min(Y, H - Y)) : min(Y, H - Y);
     if (e < 0.12) gEmit = sat * 1.4;
     if (face == 0 && T > 0.45 && T < 0.8 && U > 0.15 && U < 0.85) { c = vec3(0.08); gEmit = sat * 0.12 + vec3(0.03); }
+  } else if (L == 21) {                             // altar: carved stone, a glowing rune panel, candles on top
+    vec3 bl = blocks(Uf, Y, 2.0, 1.0, 0.5);
+    c = vec3(0.5, 0.47, 0.44) * (0.8 + 0.25 * hash(bl.xy)); if (bl.z < 0.04) c *= 0.6;
+    if (face == 0 && U > 0.15 && U < 0.85 && T > 0.2 && T < 0.75) {
+      c = vec3(0.3, 0.28, 0.26);
+      if (abs(fract(U * 6.0 + T * 3.0) - 0.5) < 0.04 || abs(T - 0.47) * H < 0.03) gEmit = vec3(1.0, 0.75, 0.35) * 0.7;
+    }
+    if (face == 0 && T > 0.9 && abs(fract(U * 4.0) - 0.5) * W / 4.0 < 0.06) gEmit = vec3(1.0, 0.7, 0.3) * (1.0 + 0.2 * sin(uTime * 7.0 + U * 20.0));
+  } else if (L == 22) {                             // table: a thick top, legs at the corners, shadow underneath
+    float x = face == 0 || face == 2 ? min(U, 1.0 - U) * W : min(Us, 1.0 - Us) * D;
+    c = vec3(0.02);
+    if (T > 0.82) c = woodCol(Uf, Y, px, 0.7) * 1.1;
+    else if (x < 0.35) c = woodCol(Y, Uf, px, 0.35) * 0.8;
+  } else if (L == 23) {                             // bed: a wooden frame, a blanket draped over the top
+    vec3 cloth = sat * 0.55 + 0.08;
+    c = woodCol(Uf, Y, px, 0.5) * 0.85;
+    float drape = face == 0 ? 0.55 : 0.35 + 0.05 * sin(Uf * 3.0);
+    if (T > drape) c = cloth * (0.75 + 0.25 * sin(Uf * 2.2 + T * 4.0)) * (0.8 + 0.2 * T);
+    if (face == 2) c = woodCol(Uf, Y, px, 0.4) * 0.9;   // the headboard
+  } else if (L == 24) {                             // hearth: stone, a fire in an arched opening, a wooden mantel
+    vec3 bl = blocks(Uf, Y, 1.2, 0.7, 0.5);
+    c = vec3(0.45, 0.42, 0.4) * (0.8 + 0.3 * hash(bl.xy)); if (bl.z < 0.04) c *= 0.55;
+    if (face == 0) {
+      vec2 q = vec2((U - 0.5) * W, Y);
+      float hw = W * 0.25, top = H * 0.55;
+      if (abs(q.x) < hw && (q.y < top - hw || length(vec2(q.x, q.y - (top - hw))) < hw)) {
+        float fl = vnoise(vec2(q.x * 3.0, q.y * 2.0 - uTime * 3.0)) * (1.0 - q.y / top);
+        c = vec3(0.02); gEmit = mix(vec3(0.8, 0.15, 0.02), vec3(1.4, 0.8, 0.25), fl) * smoothstep(0.1, 0.5, fl + 0.2);
+      }
+      if (T > 0.66 && T < 0.74) c = woodCol(Uf, Y, px, 1.0);
+    }
+  } else if (L == 25) {                             // treasure chest: planks, iron bands, a gold lock
+    c = woodCol(Y * 3.0, Uf, px, 0.45) * 0.95;
+    if (abs(T - 0.55) * H < 0.05) c = vec3(0.15);
+    float band = face == 0 || face == 2 ? min(abs(U - 0.18), abs(U - 0.82)) * W : min(abs(Us - 0.15), abs(Us - 0.85)) * D;
+    if (band < 0.1) c = vec3(0.25, 0.24, 0.26) * (0.9 + 0.2 * sin(Y * 30.0));
+    if (face == 0 && abs(U - 0.5) * W < 0.14 && T > 0.42 && T < 0.62) c = vec3(0.85, 0.65, 0.2);
+  } else if (L == 26) {                             // sofa: cushions, a back rest, fabric in the top's colour
+    vec3 cloth = sat * 0.45 + 0.06;
+    c = cloth * 0.8;
+    if (face == 0) {
+      if (T > 0.42 && T < 0.6) { c = cloth * (1.0 - 0.3 * step(abs(fract(U * 3.0) - 0.5), 0.0) ); if (abs(fract(U * 3.0)) * W / 3.0 < 0.04) c *= 0.5; }
+      if (T >= 0.6) c = cloth * 0.65;
+      if (T < 0.12) c = vec3(0.05);
+    } else c = cloth * (0.7 + 0.2 * T);
+  } else if (L == 27) {                             // ATM: steel, a lit screen, keypad, card and cash slots
+    c = vec3(0.5, 0.52, 0.55) * (0.8 + 0.2 * T);
+    if (face == 0) {
+      if (U > 0.2 && U < 0.8 && T > 0.56 && T < 0.78) { c = vec3(0.02); gEmit = vec3(0.15, 0.45, 1.0) * (0.6 + 0.1 * step(0.5, fract(T * 40.0))); }
+      else if (U > 0.3 && U < 0.7 && T > 0.4 && T < 0.52) { c = vec3(0.2); if (fract(U * 12.0) < 0.6 && fract(T * 30.0) < 0.6) c = vec3(0.7); }
+      else if (abs(U - 0.78) * W < 0.08 && abs(T - 0.46) * H < 0.03) gEmit = vec3(0.2, 1.0, 0.3);
+      else if (U > 0.3 && U < 0.7 && abs(T - 0.32) * H < 0.03) c = vec3(0.02);
+    }
+  } else if (L == 28) {                             // jukebox: a glowing arch, bubbling tubes, a speaker grille
+    c = woodCol(Uf, Y, px, 0.6) * 0.6;
+    if (face == 0) {
+      vec2 q = vec2((U - 0.5) * 2.0, T);
+      float arch = length(vec2(q.x, max(q.y - 0.6, 0.0) * 2.2));
+      if (arch < 0.95 && arch > 0.8) gEmit = hue3(fract(uTime * 0.15 + q.y * 0.5 + seed)) * 0.7;
+      else if (arch <= 0.8 && T > 0.45 && T < 0.75) { c = vec3(0.35, 0.25, 0.12); gEmit = vec3(0.9, 0.6, 0.25) * 0.15; }
+      else if (arch <= 0.78 && T < 0.35 && fract(Y * 8.0) < 0.5) c = vec3(0.08);
+    }
+  } else if (L == 29) {                             // reactor core: dark steel, pulsing rings of light, pipes
+    c = vec3(0.12, 0.13, 0.15) * (0.8 + 0.2 * vnoise(vec2(Uf, Y) * 2.0));
+    float ring = abs(fract(Y / 1.5) - 0.5) * 1.5;
+    if (ring < 0.08) gEmit = mix(vec3(0.1, 0.9, 1.0), sat, 0.3) * (0.8 + 0.4 * sin(uTime * 3.0 - Y * 1.5));
+    if (abs(fract(Uf / 2.0) - 0.5) * 2.0 < 0.1) c = vec3(0.3, 0.32, 0.35);
+  } else if (L == 30) {                             // stacked tyres
+    float row = fract(Y / 0.8);
+    c = vec3(0.05) * (1.0 + 0.6 * step(0.5, fract(Uf * 6.0 + floor(Y / 0.8) * 0.5)));
+    if (row < 0.08 || row > 0.92) c = vec3(0.015);
+  } else if (L == 31) {                             // dumpster: green ribbed steel, a lid, rust
+    c = vec3(0.12, 0.32, 0.18) * (0.75 + 0.25 * sin(Uf * 6.2831 / 1.2));
+    c = mix(c, vec3(0.32, 0.16, 0.07), smoothstep(0.62, 0.8, fbm(vec2(Uf, Y) * 1.3 + seed * 9.0)) * 0.7);
+    if (T > 0.88) c = vec3(0.08, 0.2, 0.11);
+    if (abs(T - 0.88) * H < 0.04) c = vec3(0.03);
+    if (Y < 0.35) c = vec3(0.03);
+  } else if (L == 32) {                             // car: paint, windows, wheels on the sides, lights at the ends
+    vec3 paint = sat * 0.55 + 0.05;
+    c = paint * (0.8 + 0.2 * T);
+    if (T > 0.5 && T < 0.86) c = vec3(0.04, 0.06, 0.08) + vec3(0.1, 0.14, 0.18) * step(0.7, fract(Uf * 0.4 + T * 0.8));   // glass
+    if (T < 0.08) c = vec3(0.02);
+    if (face == 1) {
+      float w1 = length(vec2((Us - 0.2) * D, Y - 1.1)), w2 = length(vec2((Us - 0.8) * D, Y - 1.1));
+      float wd = min(w1, w2);
+      if (wd < 1.15) c = wd < 0.55 ? vec3(0.45) : vec3(0.03);   // wheels: tyre and hub
+    } else if (face == 0) {
+      if (min(abs(U - 0.17), abs(U - 0.83)) * W < 0.35 && abs(T - 0.36) * H < 0.18) { c = vec3(0.8); gEmit = vec3(1.0, 0.95, 0.8) * 0.9; }
+      if (abs(U - 0.5) * W < 1.0 && T > 0.15 && T < 0.32) c = vec3(0.05);
+    } else if (min(abs(U - 0.15), abs(U - 0.85)) * W < 0.3 && abs(T - 0.38) * H < 0.15) gEmit = vec3(1.0, 0.08, 0.05) * 0.9;
+  } else if (L == 33) {                             // warehouse shelving: orange uprights, blue beams, boxes
+    c = vec3(0.02);
+    float up = face == 0 || face == 2 ? abs(fract(U * max(1.0, floor(W / 4.0 + 0.5))) - 0.5) : 0.5 - min(Us, 1.0 - Us);
+    float lvl = fract(Y / 2.2);
+    vec3 box = vec3(0.55, 0.4, 0.22) * (0.75 + 0.4 * hash(vec2(floor(Uf / 1.3), floor(Y / 2.2)) + seed));
+    if (lvl > 0.1 && lvl < 0.75 && fract(Uf / 1.3) > 0.08) c = box * (0.85 + 0.15 * step(0.5, fract(Uf / 1.3 + lvl)));
+    if (lvl < 0.1) c = vec3(0.1, 0.25, 0.6);
+    if (up > 0.46) c = vec3(0.85, 0.42, 0.08);
+  } else if (L == 34) {                             // piano: black lacquer, the keys
+    c = vec3(0.03) + vec3(0.12) * step(0.92, fract((Uf + Y) * 0.35));
+    if (face == 0 && T > 0.58 && T < 0.68 && U > 0.06 && U < 0.94) {
+      float k = fract(Uf / 0.08);
+      c = k < 0.1 ? vec3(0.2) : vec3(0.9);
+      float bk = fract(Uf / 0.08 / 7.0) * 7.0;
+      if (T > 0.63 && (abs(bk - 1.0) < 0.3 || abs(bk - 2.0) < 0.3 || abs(bk - 4.0) < 0.3 || abs(bk - 5.0) < 0.3 || abs(bk - 6.0) < 0.3)) c = vec3(0.03);
+    }
+  } else if (L == 35) {                             // market stall: a wooden counter, goods, a striped awning
+    c = woodCol(Uf, Y, px, 0.5) * 0.85;
+    if (T > 0.82) c = mod(floor(Uf / 0.8), 2.0) < 1.0 ? sat * 0.7 + 0.1 : vec3(0.85);
+    else if (T > 0.5) {
+      c = vec3(0.03);
+      if (face == 0 && T < 0.62) c = hue3(hash(vec2(floor(Uf / 0.5), 3.0) + seed)) * 0.6 + 0.1;
+      if (face == 0 && min(U, 1.0 - U) * W < 0.25) c = woodCol(Y, Uf, px, 0.25);
+    }
+  } else if (L == 36) {                             // planter: brick, plants spilling over the top
+    vec3 bl = blocks(Uf, Y, 0.75, 0.25, 0.5);
+    c = vec3(0.5, 0.25, 0.18) * (0.8 + 0.3 * hash(bl.xy)); if (bl.z < 0.02) c = vec3(0.6, 0.57, 0.52);
+    float leaf = vnoise(vec2(Uf * 3.0, Y * 3.0) + seed * 5.0);
+    if (T > 0.75 - 0.25 * leaf) c = vec3(0.12, 0.35, 0.1) * (0.6 + 0.8 * vnoise(vec2(Uf * 9.0, Y * 9.0)));
+  } else if (L == 37) {                             // boulder: rough rock
+    float n = fbm(vec2(Uf, Y) * 0.8 + seed * 7.0);
+    c = vec3(0.42, 0.4, 0.37) * (0.55 + 0.6 * n) * (0.85 + 0.15 * sin(Y * 3.0 + Uf));
+    if (abs(fbm(vec2(Uf, Y) * 1.7 + 3.0) - 0.5) < 0.02) c *= 0.5;
+  } else if (L == 38) {                             // ice: pale blue, cracks, a cold glow inside
+    float n = fbm(vec2(Uf, Y) * 0.9 + seed * 3.0);
+    c = vec3(0.55, 0.75, 0.9) * (0.55 + 0.5 * n);
+    if (abs(fbm(vec2(Uf, Y) * 1.4 + 9.0) - 0.5) < 0.015) c = vec3(0.95);
+    gEmit = vec3(0.2, 0.5, 0.7) * 0.18 * n;
+  } else if (L == 39) {                             // crystals: dark stone with glowing facets
+    c = vec3(0.1, 0.09, 0.12);
+    vec2 cell = floor(vec2(Uf, Y) * 1.4), f = fract(vec2(Uf, Y) * 1.4);
+    float hc = hash(cell + seed);
+    if (hc > 0.45 && f.y > abs(f.x - 0.5) * 1.6 && f.y < 0.95) {
+      vec3 cc = mix(vec3(0.6, 0.2, 1.0), sat, 0.35);
+      c = cc * 0.25; gEmit = cc * (0.35 + 0.5 * f.y) * (0.8 + 0.2 * sin(uTime * 2.0 + hc * 20.0));
+    }
+  } else if (L == 40) {                             // cage / jail bars: bars over a dark inside
+    c = vec3(0.015);
+    if (abs(fract(Uf / 0.45) - 0.5) * 0.45 < 0.03 || min(min(abs(T - 0.04), abs(T - 0.5)), abs(T - 0.96)) * H < 0.05) c = vec3(0.32, 0.32, 0.34);
   }
   if (edgeU < 0.05) { c *= 0.35; gEmit *= 0.2; }   // the gap between two units
   return c;
@@ -609,7 +748,9 @@ void main(){
         float Hft = max(foot + dt, 0.5);
         vec3 tc = textureLod(uFloor, (p.xz + inward * texel * 3.0) / uWorld, 5.0).rgb;
         vec3 edge = textureLod(uFloor, (p.xz + inward * texel * 1.5) / uWorld, 1.0).rgb;
-        col = pd.x > 0 ? propFace(pd.x, face, U, fu, foot, Hft, inf.y / uPpf, tc, edge, pxFt, inf.w) : mix(vec3(0.15, 0.17, 0.2), tc, 0.3) * (0.62 + 0.38 * rel);
+        vec4 dep = texelFetch(uPropInfo, ivec2(pd.z - 1, 2), 0);   // how deep it is, front to back
+        float Us = clamp((dot(p.xz, vec2(sin(az), -cos(az))) - dep.x) / max(dep.y, 1.0), 0.0, 1.0);
+        col = pd.x > 0 ? propFace(pd.x, face, U, fu, foot, Hft, inf.y / uPpf, Us, dep.y / uPpf, tc, edge, pxFt, inf.w) : mix(vec3(0.15, 0.17, 0.2), tc, 0.3) * (0.62 + 0.38 * rel);
         emit = pd.x > 0 ? gEmit : vec3(0.0);
         if (inf.z > 0.0 && face == 0) {   // its front picture: full height, its own width (centred), never wider than the front
           vec4 pr = texelFetch(uPropInfo, ivec2(pd.z - 1, 1), 0);
@@ -1046,12 +1187,13 @@ export class PovRenderer {
     let t2 = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t2);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, world.hw, world.hh, 0, gl.RGBA, gl.UNSIGNED_BYTE, world.propData ?? new Uint8Array(world.hw * world.hh * 4));
     this.tex.propData = nn(t2);
-    // row 0: box along the front (lo, width px), the picture's aspect (-1 = none), a seed; row 1: the picture's cell in the atlas
-    const PI = world.propInfo ?? [], n = Math.max(1, PI.length), info = new Float32Array(n * 2 * 4);
-    PI.forEach((r, i) => { info.set([r.lo, r.w, r.pic >= 0 && r.uv ? r.uv[4] || 1 : -1, r.seed ?? 0], i * 4); info.set(r.uv ? r.uv.slice(0, 4) : [0, 0, 1, 1], (n + i) * 4); });
+    // row 0: box along the front (lo, width px), the picture's aspect (-1 = none), a seed; row 1: the picture's cell in the
+    // atlas; row 2: box from back to front (lo, depth px)
+    const PI = world.propInfo ?? [], n = Math.max(1, PI.length), info = new Float32Array(n * 3 * 4);
+    PI.forEach((r, i) => { info.set([r.lo, r.w, r.pic >= 0 && r.uv ? r.uv[4] || 1 : -1, r.seed ?? 0], i * 4); info.set(r.uv ? r.uv.slice(0, 4) : [0, 0, 1, 1], (n + i) * 4); info.set([r.flo ?? 0, r.fd ?? 1, 0, 0], (2 * n + i) * 4); });
     if (!PI.length) info.set([0, 1, -1, 0], 0);
     t2 = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t2);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, n, 2, 0, gl.RGBA, gl.FLOAT, info);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, n, 3, 0, gl.RGBA, gl.FLOAT, info);
     this.tex.propInfo = nn(t2);
     if (world.propAtlas) this.tex.propPic = this._texture(world.propAtlas, {mip: true});
     else { t2 = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t2); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); this.tex.propPic = nn(t2); }
