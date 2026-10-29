@@ -29,6 +29,7 @@ Hooks.once("init", () => {
     onChange: () => { const w = PovWindow.instance; if (w?.view) { w.view.opts.tiltDeg = game.settings.get(MOD, "tiltDeg"); w.refreshTokens(); } }});
   reg("heightMapMax", {type: Number, default: 10, range: {min: 0, max: 40, step: 1}, onChange: () => PovWindow.instance?.rebuild()});
   reg("playersCanOpen", {type: Boolean, default: false});
+  reg("playersVision", {type: Boolean, default: true});
   reg("shadows", {type: String, default: "full", choices: choices("shadows", {full: "full", corners: "corners", off: "off"}),
     onChange: () => { const w = PovWindow.instance; if (w?.view) { w.view.opts = {...w.view.opts, ...shadowOpts()}; w.requestRender(); } }}, "client");
   reg("quality", {type: String, default: "0.75", choices: choices("quality", {"1": "full", "0.75": "balanced", "0.5": "fast"}),
@@ -43,6 +44,8 @@ const viewerTokens = foundry.utils.debounce(() => PovViewer.instance?.refreshTok
 for (const h of ["createToken", "updateToken", "deleteToken"]) Hooks.on(h, () => { if (PovViewer.instance?.mode === "live") viewerTokens(); });
 // a figure choice set on an actor's prototype token applies to its tokens already on the map
 Hooks.on("updateScene", doc => PovViewer.instance?.relook?.(doc));
+// players: their 3D view follows their sight
+Hooks.on("sightRefresh", () => { if (game.user.isGM) return; PovViewer.instance?.visionSoon?.(); PovWindow.instance?.visionSoon?.(); });
 for (const h of ["createMeasuredTemplate", "updateMeasuredTemplate", "deleteMeasuredTemplate"]) Hooks.on(h, doc => {
   const v = PovViewer.instance; if (v?.view?.world && v.liveScene === doc.parent?.id) { v.view.setTemplates(templatesOf(doc.parent, {playerView: true})); v.applyLive(v.lastLive); }
 });

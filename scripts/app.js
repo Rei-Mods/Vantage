@@ -1,6 +1,6 @@
 // Vantage - the GM's 3D window, the players' viewer, and snapshot/live sharing
 import {PovView} from "./view.js";
-import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf, sceneFlag, weatherOf, rectOf, templatesOf} from "./foundry.js";
+import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf, sceneFlag, weatherOf, rectOf, templatesOf, visionMask} from "./foundry.js";
 import {WEATHER} from "./renderer.js";
 const LOOK_KEYS = ["wallSkin", "mood", "sunAz", "lightColor", "weather"];
 
@@ -43,6 +43,12 @@ async function prepareView(view, scene, viewLevel, {playerView = false, maxBotto
   await view.setTokens(tokensOf(scene, {playerView}));
   view.setLights(lightsOf(scene));
   view.setTemplates(templatesOf(scene, {playerView}));
+  if (playerView) applyVision(view, scene);
+}
+/** a player's 3D view shows only what their tokens see (and, dimmed, what they explored) */
+function applyVision(view, scene) {
+  let on = true; try { on = setting("playersVision") !== false; } catch (e) { /* not registered */ }
+  view.setVision(on ? visionMask(scene, view.world) : null);
 }
 const COVER_COL = [[0.3, 1.0, 0.45], [1.0, 0.85, 0.2], [1.0, 0.45, 0.1], [1.0, 0.15, 0.15]];
 const COVER_KEY = ["Cover.none", "Cover.half", "Cover.three", "Cover.full"];
@@ -84,6 +90,7 @@ export class PovWindow extends ApplicationV2 {
     this._rebuildSoon = foundry.utils.debounce(() => this.rebuild(), 700);
     this._tokensSoon = foundry.utils.debounce(() => this.refreshTokens(), 300);
     this._phoneSnap = foundry.utils.debounce(() => this.sendPhoneSnapshot(), 700);
+    this.visionSoon = foundry.utils.debounce(() => { if (this.view?.world && !game.user.isGM) { applyVision(this.view, this.scene); this.requestRender(); } }, 150);
   }
 
   get title() { return `${L("Title")} - ${this.scene?.name ?? ""}`; }
@@ -670,6 +677,11 @@ export class PovViewer extends ApplicationV2 {
     this._raf = requestAnimationFrame(frame);
   }
 
+  /** the player's sight changed (a token moved, a door opened, a light went out) */
+  visionSoon() {
+    clearTimeout(this._visT);
+    this._visT = setTimeout(() => { const sc = game.scenes.get(this.liveScene); if (this.view?.world && sc) { applyVision(this.view, sc); this.applyLive(this.lastLive); } }, 150);
+  }
   /** the GM changed this scene's look, time of day or weather */
   relook(doc) {
     if (!this.view?.world || doc.id !== this.liveScene) return;

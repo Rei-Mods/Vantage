@@ -116,6 +116,9 @@ export class PovView {
     this.r.setTemplates(this.templates.map(t => ({...t, z: t.y, base: Math.max(t.elevation ?? 0, standAt(W, t.x, t.y, t.elevation ?? 0) ?? floorAt(W, t.x, t.y)) * W.ppf})));
   }
 
+  /** a player's sight (foundry.visionMask): null = everything shows */
+  setVision(mask) { const W = this.world; if (!W) return; this.r.setVision(mask, W.hw, W.hh); this.hasVision = !!mask; }
+
   // ---------------------------------------------------------------- cover
   /** what's between a point and another (px): 0 = clear, 1 = walls / rock / raised areas, 2 = another figure */
   blocked(o, p, skip = []) {

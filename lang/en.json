@@ -71,7 +71,11 @@
       },
       "playersCanOpen": {
         "Name": "Players can open the 3D view",
-        "Hint": "Lets players open it from their own tokens. It only shows tokens they can see, but it ignores fog of war."
+        "Hint": "Lets players open it from their own tokens. It shows only tokens they can see (and, with the next setting, only what their tokens can see)."
+      },
+      "playersVision": {
+        "Name": "Players' 3D views follow their sight",
+        "Hint": "On = in Live views (and the window, if players can open it) players see only what their tokens see right now; places they explored before stay dim grey; the rest is dark, like fog of war on the map. Show Players pictures are never limited (you choose what to send). Off = players see everything you show."
       },
       "shadows": {
         "Name": "Shadows + corner shading",

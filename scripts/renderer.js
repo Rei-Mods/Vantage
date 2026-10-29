@@ -26,6 +26,7 @@ uniform int uWx; uniform vec3 uWxVel, uWxCol, uWxMistCol; uniform vec4 uWxP, uWx
 uniform sampler2D uShelter;
 uniform vec4 uHover, uHoverCol;
 uniform sampler2D uPropData, uPropInfo, uPropPic;
+uniform sampler2D uVis; uniform float uVisOn;      // a player's sight: R = in sight now, G = explored before
 uniform sampler2D uTpl; uniform int uTplN;          // spell templates: per template (x, z, length, type) (direction, half angle / width, base height) (colour)
 uniform vec4 uBeamA[4], uBeamB[4], uBeamC[4]; uniform int uBeamN;   // cover lines: from, to, colour   // raised areas that look like something: per pixel look / front / region; per region box + picture   // what the mouse points at: x, z, radius, height (px); colour, 1 = ring on the floor / 2 = a door   // ft: weather only falls above this (higher floors over the view, "suppress weather" regions)
 uniform vec4 uSPos[${MAX_STANDEES}], uSUV[${MAX_STANDEES}], uSInfo[${MAX_STANDEES}], uSTint[${MAX_STANDEES}], uSRing[${MAX_STANDEES}];
@@ -846,6 +847,11 @@ void main(){
     if (uAO > 0.0 && !cut) col *= mix(1.0, side ? aoSide(p, n2, texel) : aoFloor(p, t), uAO * 0.85);
     float fog = 1.0 - exp(-max(t - uFogStart * uPpf, 0.0) / (uFogFt * uPpf));
     col = mix(col, uFogCol, fog);
+    if (uVisOn > 0.5) {   // fog of war: out of sight is dark; explored places stay as a dim grey memory
+      vec2 vm = texture(uVis, (p.xz + (side ? -n2 * texel * 2.0 : vec2(0.0))) / uWorld).rg;
+      float sn = smoothstep(0.15, 0.6, vm.r), ex = smoothstep(0.15, 0.6, vm.g);
+      col = mix(vec3(dot(col, vec3(0.3, 0.5, 0.2))) * 0.28 * ex, col, sn);
+    }
   } else if (uMood > 0.5) {
     // a mood's sky: horizon to zenith, the sun's disc and glow; below the horizon it fades into the haze
     col = mix(uSkyHor, uSkyTop, smoothstep(0.0, 0.6, d.y));
@@ -1223,6 +1229,22 @@ export class PovRenderer {
     this.tex.tpl = tx; this.tplN = L.length;
   }
 
+  /** a player's sight mask (RGBA bytes over the height grid), or null = everything shows */
+  setVision(data, w, h) {
+    const gl = this.gl;
+    if (!data) { this.visOn = false; return; }
+    if (!this.tex.vis || this._visW !== w || this._visH !== h) {
+      if (this.tex.vis) gl.deleteTexture(this.tex.vis);
+      this.tex.vis = gl.createTexture(); this._visW = w; this._visH = h;
+      gl.bindTexture(gl.TEXTURE_2D, this.tex.vis);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    } else gl.bindTexture(gl.TEXTURE_2D, this.tex.vis);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    this.visOn = true;
+  }
+
   setAtlas(atlasCanvas) {
     const gl = this.gl;
     if (this.tex.atlas) gl.deleteTexture(this.tex.atlas);
@@ -1294,6 +1316,8 @@ export class PovRenderer {
       const P = W.ppf, wk = Wx ? (Wx.k ?? 0) : 0;
       this._bindTex(5, this.tex.shelter, u.uShelter);
       if (!this.tex.tpl) this.setTemplates([]);
+      if (!this.tex.vis) { this.setVision(new Uint8Array([255, 255, 0, 255]), 1, 1); this.visOn = false; }
+      this._bindTex(10, this.tex.vis, u.uVis); gl.uniform1f(u.uVisOn ?? null, this.visOn && !opts.noVision ? 1 : 0);
       this._bindTex(9, this.tex.tpl, u.uTpl); gl.uniform1i(u.uTplN ?? null, this.tplN ?? 0);
       const BM = (opts.beams ?? []).slice(0, 4), BA = new Float32Array(16), BB = new Float32Array(16), BC = new Float32Array(16);
       BM.forEach((b, i) => { BA.set([...b.from, 0], i * 4); BB.set([...b.to, 0], i * 4); BC.set([...b.color, 1], i * 4); });

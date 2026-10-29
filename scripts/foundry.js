@@ -189,6 +189,52 @@ export function templatesOf(scene, {playerView = false} = {}) {
   });
 }
 
+// ------------------------------------------------------------------ vision + fog of war (players)
+const fogImgs = new Map();
+function fogImage(src) {
+  if (!src) return null;
+  if (fogImgs.has(src)) return fogImgs.get(src);
+  const img = new Image(); img.src = src; fogImgs.clear(); fogImgs.set(src, img); return img;
+}
+/** What this user's tokens can see right now, and have seen before, on the scene that's on the canvas, as a mask over the
+ *  3D world (RGBA bytes, R = in sight, G = explored), or null when nothing is hidden (the GM, token vision off, another
+ *  scene). Sight = line of sight of the user's vision sources, inside lit areas or the token's own sight range. */
+export function visionMask(scene, world, {force = false} = {}) {
+  try {
+    if ((game.user.isGM && !force) || !canvas?.ready || canvas.scene?.id !== scene.id || !world) return null;
+    if (canvas.visibility?.tokenVision === false || scene.tokenVision === false) return null;
+    const r = rectOf(scene), hs = world.hs, w = world.hw, h = world.hh;
+    const mk = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d", {willReadFrequently: true}); x.setTransform(hs, 0, 0, hs, -r.ox * hs, -r.oy * hs); x.fillStyle = "#fff"; return [c, x]; };
+    const fillPoly = (ctx, pts) => { if (!pts || pts.length < 6) return; ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.closePath(); ctx.fill(); };
+    const vs = [...(canvas.effects?.visionSources ?? [])].filter(v => v.active !== false && v.los?.points);
+    // lit: global light, scene lights, each token's own sight range (darkvision...)
+    const [lc, lx] = mk();
+    const global = canvas.environment?.globalLightSource?.active ?? canvas.environment?.globalLight ?? false;
+    if (global === true) lx.fillRect(r.ox, r.oy, r.W, r.H);
+    else {
+      for (const l of canvas.effects?.lightSources ?? []) if (l.active !== false && !l.isDarkness) fillPoly(lx, l.shape?.points);
+      for (const v of vs) fillPoly(lx, v.shape?.points);
+    }
+    // in sight: inside a line of sight and lit; softened a little so the walls at its edge count as seen
+    const [vc, vx] = mk();
+    for (const v of vs) fillPoly(vx, v.los.points);
+    vx.setTransform(1, 0, 0, 1, 0, 0); vx.globalCompositeOperation = "destination-in"; vx.drawImage(lc, 0, 0);
+    const [fc, fx] = mk(); fx.setTransform(1, 0, 0, 1, 0, 0);
+    fx.filter = `blur(${Math.max(1, 0.3 * r.gridPx * hs)}px)`; fx.drawImage(vc, 0, 0); fx.filter = "none";
+    const seen = fx.getImageData(0, 0, w, h).data;
+    // explored before (Foundry's saved fog of war, over the scene rectangle)
+    let expl = null;
+    const img = fogImage(canvas.fog?.exploration?.explored);
+    if (img?.complete && img.naturalWidth) { const [ec, ex] = mk(); ex.setTransform(1, 0, 0, 1, 0, 0); ex.drawImage(img, 0, 0, w, h); expl = ex.getImageData(0, 0, w, h).data; }
+    const out = new Uint8Array(w * h * 4);
+    for (let k = 0, j = 0; k < w * h; k++, j += 4) {
+      const sv = Math.min(255, seen[j + 3] * 2);
+      out[j] = sv; out[j + 1] = Math.max(sv, expl ? expl[j] : 0); out[j + 3] = 255;
+    }
+    return out;
+  } catch (e) { console.warn(MOD, "vision", e); return null; }
+}
+
 /** the nearest hostile the token could look at (for the default facing) */
 export function nearestFoe(scene, tok, list) {
   const mine = scene.tokens.get(tok.id);

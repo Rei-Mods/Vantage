@@ -177,6 +177,7 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 - **Show Players** sends the current picture to everyone, and also works on phones. Hidden tokens are never in it.
 - **Live** makes your players' screens follow your camera while you move it. Phones get a fresh picture whenever you stop moving.
 - Optionally, let players open the view from their own tokens.
+- **Players see only what their tokens see**: in Live views (and the window, if players may open it) whatever their tokens can't see right now is dark, and places they explored before stay a dim grey memory, like fog of war on the map. Show Players pictures are never limited: you choose what to send.
 
 ### Light on performance
 - **Nothing runs while the window is closed.** While it's open, it only draws when the camera moves or something on the map animates (at most 30 frames a second for animation).
@@ -271,7 +272,8 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 | Figure pictures | Portrait | Portrait / Token image standing / Token image leaning back. |
 | Leaning figures: angle | 40 | Tilt for leaning figures: about 30–45 for high-angle token art, 60–70 for straight-down art. |
 | Height maps: tallest point (ft) | 10 | How tall white is in height maps. 0 = off. |
-| Players can open the 3D view | Off | Players can open it from their own tokens (it shows only tokens they can see, but ignores fog of war). |
+| Players can open the 3D view | Off | Players can open it from their own tokens (it shows only tokens they can see). |
+| Players' 3D views follow their sight | On | Players' Live views (and windows) show only what their tokens see; explored places stay dim grey; the rest is dark. Show Players pictures are never limited. |
 
 ### Client settings (each computer)
 | Setting | Default | What it does |
