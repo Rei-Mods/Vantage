@@ -1,6 +1,6 @@
 // Vantage - camera + scene state around one renderer (used by the GM window and the players' live view)
 import {PovRenderer} from "./renderer.js";
-import {buildWorld, buildStandees, floorAt, heightAt, coverAt, standAt, playFloor, floorFrame} from "./world.js";
+import {buildWorld, buildStandees, floorAt, heightAt, coverAt, standAt, playFloor, floorFrame, KIND} from "./world.js";
 
 const hash1 = x => { const s = Math.sin(x * 127.1 + 1.7) * 43758.5453; return s - Math.floor(s); };
 const noise1 = x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return hash1(i) * (1 - u) + hash1(i + 1) * u; };
@@ -76,8 +76,27 @@ export class PovView {
     tokens = tokens.filter(t => !t.level || !ids?.size || ids.has(t.level));
     const {atlas, list} = await buildStandees(this.world, tokens, {tiltDeg: this.opts.tiltDeg});
     this.r.setAtlas(atlas);
+    // figures that moved glide to their new spot (about a third of a second), like tokens on the map
+    const old = new Map(this.standees.map(s => [s.id, this.shown(s)])), now = this.clock();
+    for (const s of list) {
+      const o = old.get(s.id);
+      if (o && Math.hypot(o.x - s.x, o.z - s.z) > 1 && Math.hypot(o.x - s.x, o.z - s.z) < 40 * this.world.gridPx) s.glide = {from: [o.x, o.y, o.z], t0: now, dur: 0.35};
+    }
     this.standees = list;
   }
+  /** seconds: the view's own clock when set (recorded clips), else real time */
+  clock() { return this.time ?? performance.now() / 1000; }
+  /** where a figure is drawn right now (part way along a glide) */
+  shown(s) {
+    const g = s.glide; if (!g) return s;
+    const k = Math.max(0, Math.min(1, (this.clock() - g.t0) / g.dur)), e = k * k * (3 - 2 * k);
+    if (k >= 1) { delete s.glide; return s; }
+    return {...s, x: g.from[0] + (s.x - g.from[0]) * e, y: g.from[1] + (s.y - g.from[1]) * e, z: g.from[2] + (s.z - g.from[2]) * e};
+  }
+  /** the camera glides to a new eye position (the token you look through moved) */
+  glideCam(from) { if (from) this._camGlide = {from: [...from], t0: this.clock(), dur: 0.35}; }
+  /** a glide is under way: keep drawing */
+  isMoving() { return !!this._camGlide || this.standees.some(s => s.glide); }
 
   setLights(lights) {
     const W = this.world;
@@ -140,10 +159,16 @@ export class PovView {
       f = norm([Math.cos(y) * Math.cos(p), Math.sin(p), Math.sin(y) * Math.cos(p)]);
       const dist = c.dist * W.ppf;
       pos = [c.target[0] - f[0] * dist, c.target[1] - f[1] * dist, c.target[2] - f[2] * dist];
+      this._camGlide = null;
     } else {
       const p = c.pitch * D2R, y = c.yaw * D2R;
       f = norm([Math.cos(y) * Math.cos(p), Math.sin(p), Math.sin(y) * Math.cos(p)]);
       pos = c.pos;
+      const g = this._camGlide;
+      if (g) {
+        const k = Math.max(0, Math.min(1, (this.clock() - g.t0) / g.dur)), e = k * k * (3 - 2 * k);
+        if (k >= 1) this._camGlide = null; else pos = pos.map((v, i) => g.from[i] + (v - g.from[i]) * e);
+      }
     }
     const r = norm(cross(f, [0, 1, 0])), u = cross(r, f);
     return {pos, f, r, u, fov: c.fov};
@@ -168,13 +193,13 @@ export class PovView {
     const showHidden = !forPlayers && this.opts.showHidden !== false;
     // nearest lights first (to what you're looking at: the eye, or the overview's target)
     const ref = this.cam.mode === "orbit" ? this.cam.target : v.pos;
-    const t = this.time ?? performance.now() / 1000;
+    const t = this.time ?? this.clock();
     // animated lights follow the clock unless animation is off (then they hold still, as in Foundry with animation off)
     const live = this.animate !== false;
     const lights = this.lights.map((l, k) => live ? animLight(l, t, k) : l).sort((a, b) => Math.hypot(a.x - ref[0], a.z - ref[2]) - Math.hypot(b.x - ref[0], b.z - ref[2]));
     const gp = this.world.gridPx || this.world.ppf * 5;
     const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-    const st = this.standees
+    const st = this.standees.map(s => this.shown(s))
       .filter(s => s.id !== (this.cam.mode === "eye" ? this.selfId : null))
       .filter(s => showHidden || !s.hidden)
       .map(s => {
@@ -206,7 +231,111 @@ export class PovView {
     }
     // haze starts behind what an overview looks at, so a far-away overview isn't murky
     const fogStart = this.cam.mode === "orbit" ? this.cam.dist * 0.8 : 0;
-    this.r.render(v, lights, st, {fogStart, ...this.opts, time: live ? t : 0, flash: live ? flashAt(t) : 0, ...cut});
+    this._cut = cut; this._showHidden = showHidden;
+    this.r.render(v, lights, st, {fogStart, ...this.opts, time: live ? t : 0, flash: live ? flashAt(t) : 0, hover: forPlayers ? null : this.hover ?? null, ...cut});
+  }
+
+  // ---------------------------------------------------------------- picking (play in 3D)
+  /** the ray through a point of the canvas (nx, ny: 0..1 from the top left) */
+  rayAt(nx, ny) {
+    const v = this.vectors(), c = this.canvas, tanX = Math.tan(v.fov * D2R / 2), asp = c.height / c.width;
+    const x = nx * 2 - 1, y = 1 - ny * 2;
+    return {o: v.pos, d: norm([0, 1, 2].map(i => v.f[i] + x * tanX * v.r[i] + y * tanX * asp * v.u[i]))};
+  }
+  /** the overview's cutaway at a point (as the shader cuts it), so a click lands on what you see */
+  cutLim(x, z, t) {
+    const c = this._cut; if (!c) return Infinity;
+    let lim = t < c.cutT ? c.cutH : Infinity;
+    if (c.cap && c.capR > 0) {
+      const [ax, az, bx, bz] = c.cap, abx = bx - ax, abz = bz - az, L2 = Math.max(abx * abx + abz * abz, 1e-6);
+      const sv = ((x - ax) * abx + (z - az) * abz) / L2;
+      if (sv < 1) { const ss = Math.max(sv, 0); if (Math.hypot(x - (ax + abx * ss), z - (az + abz * ss)) < c.capR) lim = Math.min(lim, c.capH + Math.max(c.capTop - c.capH, 0) * (1 - ss) * 0.6); }
+    }
+    return lim;
+  }
+  /** march the ray over the heights: the first thing it hits {t, x, y, z (px), kind, side} or null */
+  marchHeights(o, d) {
+    const W = this.world, hs = W.hs, hd = W.heightData, ppf = W.ppf, tex = 1 / hs;
+    const lo = [0, (W.minH - 2) * ppf, 0], hi = [W.W, (W.maxH + 2) * ppf, W.H];
+    let tn = 0.5, tf = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const dd = Math.abs(d[i]) < 1e-9 ? 1e-9 : d[i], a = (lo[i] - o[i]) / dd, b = (hi[i] - o[i]) / dd;
+      tn = Math.max(tn, Math.min(a, b)); tf = Math.min(tf, Math.max(a, b));
+    }
+    if (!(tf > tn)) return null;
+    const hAt = (x, z, t) => {
+      const xi = Math.floor(x * hs), zi = Math.floor(z * hs);
+      if (xi < 0 || zi < 0 || xi >= W.hw || zi >= W.hh) return [-Infinity, 0];
+      const k = zi * W.hw + xi; return [Math.min(hd[k * 2] * ppf, this.cutLim(x, z, t)), hd[k * 2 + 1]];
+    };
+    let tp = tn;
+    for (let t = tn, i = 0; t <= tf && i < 40000; i++) {
+      const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t;
+      if (y < hAt(x, z, t)[0]) {
+        let a = tp, b = t;
+        for (let k = 0; k < 12; k++) { const m = (a + b) / 2; if (o[1] + d[1] * m < hAt(o[0] + d[0] * m, o[2] + d[2] * m, m)[0]) b = m; else a = m; }
+        const px = o[0] + d[0] * b, py = o[1] + d[1] * b, pz = o[2] + d[2] * b, [h, kind] = hAt(px, pz, b);
+        return {t: b, x: px, y: Math.min(py, h), z: pz, kind, side: py < h - 0.6 * ppf};
+      }
+      tp = t; t += Math.max(tex * 0.5, t * 0.0013);
+    }
+    return null;
+  }
+  /** a door near a spot (scene-rect px) within r px: {id, open, locked, secret, cx, cz, len} */
+  doorNear(x, z, r) {
+    const D = this.sceneData; if (!D) return null;
+    const ids = this.world.levelIds;
+    let best = null, bd = r;
+    for (const w of D.walls ?? []) {
+      if (!(w.door > 0) || !w.id) continue;
+      if (w.door === 2 && !this._showHidden) continue;   // secret doors: the GM only
+      if (w.levels?.length && ids?.size && !w.levels.some(id => ids.has(id))) continue;
+      const ax = w.c[0] - D.ox, az = w.c[1] - D.oy, bx = w.c[2] - D.ox, bz = w.c[3] - D.oy;
+      const abx = bx - ax, abz = bz - az, L2 = abx * abx + abz * abz || 1;
+      const s = Math.max(0, Math.min(1, ((x - ax) * abx + (z - az) * abz) / L2));
+      const dist = Math.hypot(x - (ax + abx * s), z - (az + abz * s));
+      if (dist < bd) { bd = dist; best = {id: w.id, open: w.ds === 1, locked: w.ds === 2, secret: w.door === 2, cx: (ax + bx) / 2, cz: (az + bz) / 2, len: Math.sqrt(L2)}; }
+    }
+    return best;
+  }
+  /** what is under a point of the canvas: {type: "token", id} | {type: "door", ...door} | {type: "floor", x, y (scene px), elev (ft)} */
+  pick(nx, ny) {
+    const W = this.world; if (!W) return null;
+    const {o, d} = this.rayAt(nx, ny);
+    const hit = this.marchHeights(o, d);
+    let best = null, bt = hit ? hit.t : Infinity;
+    for (const s0 of this.standees) {
+      const s = this.shown(s0);
+      if (this.cam.mode === "eye" && s.id === this.selfId) continue;
+      if (s.hidden && !this._showHidden) continue;
+      if (s.flat) {   // lying on the floor: where the ray meets its plane
+        if (Math.abs(d[1]) < 1e-6) continue;
+        const ts = (s.y + 0.1 * W.ppf - o[1]) / d[1];
+        if (ts <= 0 || ts >= bt) continue;
+        if (Math.hypot(o[0] + d[0] * ts - s.x, o[2] + d[2] * ts - s.z) < Math.max(s.w, s.h) * 0.5) { best = s; bt = ts; }
+        continue;
+      }
+      // a standing card facing the camera (leaning back by its tilt), as the shader draws it
+      let n = [o[0] - s.x, 0, o[2] - s.z]; const ln = Math.hypot(n[0], n[2]); if (ln < 1) continue; n = n.map(v => v / ln);
+      const ta = (s.tilt ?? 0) * D2R, up = [-n[0] * Math.sin(ta), Math.cos(ta), -n[2] * Math.sin(ta)], nn = [n[0] * Math.cos(ta), Math.sin(ta), n[2] * Math.cos(ta)];
+      const B = [s.x + n[0] * 0.5 * s.h * Math.sin(ta), s.y, s.z + n[2] * 0.5 * s.h * Math.sin(ta)];
+      const den = d[0] * nn[0] + d[1] * nn[1] + d[2] * nn[2]; if (Math.abs(den) < 1e-5) continue;
+      const ts = ((B[0] - o[0]) * nn[0] + (B[1] - o[1]) * nn[1] + (B[2] - o[2]) * nn[2]) / den;
+      if (ts <= 0 || ts >= bt) continue;
+      const P = [o[0] + d[0] * ts - B[0], o[1] + d[1] * ts - B[1], o[2] + d[2] * ts - B[2]];
+      const br = norm(cross([-n[0], 0, -n[2]], [0, 1, 0]));
+      const u = (P[0] * br[0] + P[2] * br[2]) / s.w + 0.5, v = 1 - (P[0] * up[0] + P[1] * up[1] + P[2] * up[2]) / s.h;
+      if (u > 0.12 && u < 0.88 && v > 0.04 && v < 1) { best = s; bt = ts; }
+    }
+    if (best) return {type: "token", id: best.id, x: best.x, z: best.z, y: best.y, ring: best.ring};
+    if (!hit) return null;
+    const gp = W.gridPx;
+    // a closed door you clicked on, or right on the line of an open one
+    // (a door in the middle of a wall line may be built as wall: a click on the face right at it counts too)
+    const onFace = hit.kind === KIND.door || (hit.side && (hit.kind === KIND.wall || hit.kind === KIND.door));
+    const door = this.doorNear(hit.x, hit.z, onFace ? 0.4 * gp : 0.2 * gp);
+    if (door && (onFace ? !door.open : door.open)) return {type: "door", ...door, y: hit.y};
+    return {type: "floor", x: hit.x, y: hit.z, elev: hit.y / W.ppf, h: hit.y, side: hit.side, kind: hit.kind};
   }
 
   snapshot({width = 1600, quality = 0.82, forPlayers = true} = {}) {

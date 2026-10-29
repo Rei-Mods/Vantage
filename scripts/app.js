@@ -1,6 +1,6 @@
 // Vantage - the GM's 3D window, the players' viewer, and snapshot/live sharing
 import {PovView} from "./view.js";
-import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf, sceneFlag, weatherOf} from "./foundry.js";
+import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf, sceneFlag, weatherOf, rectOf} from "./foundry.js";
 import {WEATHER} from "./renderer.js";
 const LOOK_KEYS = ["wallSkin", "mood", "sunAz", "lightColor", "weather"];
 
@@ -186,8 +186,9 @@ export class PovWindow extends ApplicationV2 {
             if (want !== this.maxBottom) await this.build(this.viewLevel, want);
           } finally { this._busy = false; }
           // follow the token: a new facing turns the camera; a plain move keeps where you were looking
-          const yaw = this.view.cam.yaw, pitch = this.view.cam.pitch, fov = this.view.cam.fov;
+          const yaw = this.view.cam.yaw, pitch = this.view.cam.pitch, fov = this.view.cam.fov, from = [...this.view.cam.pos];
           this.view.eyeFrom(t);
+          if (old && moved) this.view.glideCam(from);   // walk there, don't teleport
           Object.assign(this.view.cam, turned ? {pitch, fov} : {yaw, pitch, fov});
           this._selfPos = {x: t.x, y: t.y, e: t.elevation, r: t.rotation};
         }
@@ -245,6 +246,78 @@ export class PovWindow extends ApplicationV2 {
     this.requestRender();
   }
 
+  // ---------------------------------------------------------------- play in 3D
+  pickAt(ev) {
+    const r = this.canvasEl.getBoundingClientRect();
+    return this.view?.world ? this.view.pick((ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height) : null;
+  }
+  /** the token that moves on a double-click: the one you look through, the one picked here, or the one selected on the map */
+  activeToken() {
+    const id = this.view?.selfId ?? (canvas.scene?.id === this.scene.id ? canvas.tokens?.controlled?.[0]?.id : null);
+    return id ? this.scene.tokens.get(id) ?? null : null;
+  }
+  /** under the mouse: a ring where a double-click would send the token, a lit door, a ring around a figure */
+  hoverSoon(ev) {
+    if (this._hoverRaf) { this._hoverEv = ev; return; }
+    this._hoverEv = ev;
+    this._hoverRaf = requestAnimationFrame(() => {
+      this._hoverRaf = null;
+      const p = this.pickAt(this._hoverEv), W = this.view?.world; if (!W) return;
+      let hv = null;
+      if (p?.type === "token") hv = {x: p.x, z: p.z, y: p.y, r: (p.ring || 0.47 * W.gridPx) * 1.18, col: [1, 1, 1]};
+      else if (p?.type === "door") hv = p.open ? {x: p.cx, z: p.cz, y: p.y, r: p.len * 0.5, col: [1, 0.8, 0.25]} : {x: p.cx, z: p.cz, y: p.y, r: p.len * 0.55, col: [1, 0.8, 0.25], door: true};
+      else if (p?.type === "floor" && !p.side && this.activeToken()?.isOwner) hv = {x: p.x, z: p.y, y: p.h, r: 0.42 * W.gridPx, col: [0.25, 0.95, 1], dot: true};
+      this.canvasEl.style.cursor = p?.type === "door" || p?.type === "token" ? "pointer" : "";
+      const key = hv ? [hv.x, hv.z, hv.r].map(Math.round).join() : "";
+      if (key !== this._hoverKey) { this._hoverKey = key; this.view.hover = hv; this.requestRender(); }
+    });
+  }
+  async onClick(ev, button) {
+    const p = this.pickAt(ev); if (!p) return;
+    if (button === 2) { if (p.type === "token") this.toggleTarget(p.id, ev.shiftKey); return; }
+    if (p.type === "door") return this.toggleDoor(p);
+    if (p.type === "token") return this.selectToken(p.id);
+  }
+  async onDoubleClick(ev) {
+    const p = this.pickAt(ev);
+    if (p?.type === "floor" && !p.side) return this.moveTo(p);
+  }
+  /** pick a token here (the one a double-click moves); also selects it on the map */
+  selectToken(id) {
+    const doc = this.scene.tokens.get(id); if (!doc) return;
+    if (canvas.scene?.id === this.scene.id && (doc.isOwner || game.user.isGM)) doc.object?.control({releaseOthers: true});
+    if (this.view.cam.mode === "orbit") this.view.selfId = id;
+    this.fillTokenSelect(); this.requestRender();
+  }
+  toggleTarget(id, keep) {
+    const t = this.scene.tokens.get(id)?.object;
+    if (!t || canvas.scene?.id !== this.scene.id) return ui.notifications.warn(L("Notify.TargetScene"));
+    t.setTarget(!t.isTargeted, {releaseOthers: !keep});
+  }
+  async toggleDoor(p) {
+    const w = this.scene.walls.get(p.id); if (!w) return;
+    if (game.paused && !game.user.isGM) return ui.notifications.warn(game.i18n.localize("GAME.PausedWarning"));
+    const S = CONST.WALL_DOOR_STATES;
+    if (w.ds === S.LOCKED) return ui.notifications.info(L("Notify.Locked"));
+    try { await w.update({ds: w.ds === S.OPEN ? S.CLOSED : S.OPEN}); } catch (e) { console.error(MOD, e); ui.notifications.warn(L("Notify.Error", {error: e.message})); }
+  }
+  /** double-click on the floor: the token walks there (snapped to the grid like a drag; walls stop players) */
+  async moveTo(p) {
+    const doc = this.activeToken();
+    if (!doc) return ui.notifications.info(L("Notify.PickToken"));
+    if (!doc.isOwner) return ui.notifications.warn(L("Notify.NotYours"));
+    if (game.paused && !game.user.isGM) return ui.notifications.warn(game.i18n.localize("GAME.PausedWarning"));
+    const r = rectOf(this.scene), gs = r.gridPx;
+    let x = p.x + r.ox - doc.width * gs / 2, y = p.y + r.oy - doc.height * gs / 2;
+    try { const sn = doc.object?.getSnappedPosition?.({x, y}) ?? this.scene.grid.getSnappedPoint({x, y}, {mode: CONST.GRID_SNAPPING_MODES.TOP_LEFT_CORNER}); x = sn.x; y = sn.y; } catch (e) { /* free placement */ }
+    const t = doc.object;
+    if (!game.user.isGM && t?.checkCollision) {
+      try { if (t.checkCollision(t.getCenterPoint({x, y}), {type: "move", mode: "any"})) return ui.notifications.warn(L("Notify.Blocked")); } catch (e) { /* no check */ }
+    }
+    try { if (typeof doc.move === "function") await doc.move({x, y}); else await doc.update({x, y}); }
+    catch (e) { console.error(MOD, e); ui.notifications.warn(L("Notify.Error", {error: e.message})); }
+  }
+
   /** the time slider and weather list show the scene as it is now */
   syncLookUI() {
     const st = this.stage; if (!st) return;
@@ -268,9 +341,10 @@ export class PovWindow extends ApplicationV2 {
   bindUI(root) {
     const cv = this.canvasEl;
     let drag = null;
-    cv.addEventListener("pointerdown", ev => { if (ev.button !== 0 && ev.button !== 2) return; cv.focus(); drag = {x: ev.clientX, y: ev.clientY, b: ev.button}; cv.setPointerCapture(ev.pointerId); });
+    cv.addEventListener("pointerdown", ev => { if (ev.button !== 0 && ev.button !== 2) return; cv.focus(); drag = {x: ev.clientX, y: ev.clientY, b: ev.button, x0: ev.clientX, y0: ev.clientY, t0: performance.now()}; cv.setPointerCapture(ev.pointerId); });
     cv.addEventListener("pointermove", ev => {
-      if (!drag || !this.view?.world) return;
+      if (!this.view?.world) return;
+      if (!drag) return this.hoverSoon(ev);
       const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y; drag.x = ev.clientX; drag.y = ev.clientY;
       const c = this.view.cam;
       if (drag.b === 2) { this.view.move(-dx * 0.08 * c.dist / 60, dy * 0.08 * c.dist / 60, 0); }
@@ -278,8 +352,18 @@ export class PovWindow extends ApplicationV2 {
       else { c.yaw += dx * 0.3; c.orbitPitch = Math.max(-89, Math.min(-4, c.orbitPitch - dy * 0.25)); }
       this.requestRender(true);
     });
-    const end = ev => { if (drag) { drag = null; try { cv.releasePointerCapture(ev.pointerId); } catch (e) {} this.requestRender(); } };
+    const end = ev => {
+      if (!drag) return;
+      // a click (not a drag): play in 3D - left = pick a token or open a door, right = target
+      const click = ev.type === "pointerup" && Math.hypot(ev.clientX - drag.x0, ev.clientY - drag.y0) < 5 && performance.now() - drag.t0 < 450;
+      const b = drag.b; drag = null;
+      try { cv.releasePointerCapture(ev.pointerId); } catch (e) {}
+      if (click) this.onClick(ev, b);
+      this.requestRender();
+    };
     cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+    cv.addEventListener("pointerleave", () => { if (this.view?.hover) { this.view.hover = null; this.requestRender(); } });
+    cv.addEventListener("dblclick", ev => this.onDoubleClick(ev));
     cv.addEventListener("contextmenu", ev => ev.preventDefault());
     cv.addEventListener("wheel", ev => {
       ev.preventDefault(); if (!this.view?.world) return;
@@ -358,7 +442,7 @@ export class PovWindow extends ApplicationV2 {
       if (!this.view?.world) return;
       const anim = this.animating();
       // animation alone: about 30 fps is plenty (saves the GPU); camera moves still draw every frame
-      if (anim && !this.keys.size && !this._moving && now - (this._lastFrame ?? 0) < 31) { this._raf = requestAnimationFrame(tick); return; }
+      if (anim && !this.keys.size && !this._moving && !this.view.isMoving() && now - (this._lastFrame ?? 0) < 31) { this._raf = requestAnimationFrame(tick); return; }
       this._lastFrame = now;
       if (anim && now - (this._lastMedia ?? 0) > 38) { this.view.tickMedia(); this._lastMedia = now; }
       const dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -375,7 +459,7 @@ export class PovWindow extends ApplicationV2 {
       sizeCanvas(this.canvasEl, this.stage, this.quality(this._moving));
       this.view.render();
       if (this.live) this.broadcastLive();
-      if (k.size || anim) this._raf = requestAnimationFrame(tick);
+      if (k.size || anim || this.view.isMoving()) this._raf = requestAnimationFrame(tick);
     };
     this._raf = requestAnimationFrame(tick);
   }
@@ -423,6 +507,7 @@ export class PovWindow extends ApplicationV2 {
     const on = (h, fn) => this.hooks.push([h, Hooks.on(h, fn)]);
     const mine = doc => { let d = doc.parent ?? doc.scene; while (d && d.documentName !== "Scene") d = d.parent; return d?.id === this.scene.id; };   // region behaviours sit under a region
     for (const h of ["createToken", "updateToken", "deleteToken"]) on(h, doc => { if (mine(doc)) this._tokensSoon(); });
+    on("targetToken", (user, token) => { if (user.id === game.user.id && token.document?.parent?.id === this.scene.id) this._tokensSoon(); });
     for (const h of ["createWall", "updateWall", "deleteWall", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createLevel", "updateLevel", "deleteLevel",
       "createRegion", "updateRegion", "deleteRegion", "createRegionBehavior", "updateRegionBehavior", "deleteRegionBehavior"])
       on(h, doc => { if (mine(doc)) this._rebuildSoon(); });

@@ -147,6 +147,12 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 
 <p align="center"><img src="docs/images/stage-lights.jpg" width="80%" alt="A DJ booth on a lit stage with a figure in front of it"></p>
 
+### Play in 3D
+- **Double-click the floor** and the token walks there, snapped to the grid like a drag on the map (walls stop players, as on the map). In eye view the camera walks with it; figures glide instead of jumping.
+- **Click a door** to open or close it, for everyone, with its sound. It lights up under the mouse. Locked doors stay shut, and secret doors only work for the GM.
+- **Click a figure** to pick it (it's selected on the map too, and a double-click moves it). **Right-click** a figure to target it (Shift keeps your other targets). Targets get an orange ring.
+- A ring shows where a double-click would land.
+
 ### Weather and time of day
 - **11 kinds of weather in 3D**: rain, thunderstorm (with lightning), snow, blizzard, fog (drifting ground mist), falling ash, embers, falling leaves, fireflies, sandstorm, or clear. Drops and flakes are real 3D particles: they fall behind and in front of figures, catch the light of nearby lamps, and stop at walls.
 - **Follows Foundry**: by default a scene shows its own Foundry weather (or FXMaster's). Pick another in the window or in Scene Config.
@@ -205,10 +211,13 @@ To make a map pop even more, give the obvious props a height (*Region → Placem
 | Q / E | Down / up | Turn |
 | Mouse wheel | Field of view | Distance |
 | Shift | Faster | Faster |
+| Double-click floor | Walk your token there | Walk the picked token there |
+| Click | Open / close a door, pick a figure | Open / close a door, pick a figure |
+| Right-click (no drag) | Target a figure (Shift: add) | Target a figure (Shift: add) |
 
 <img src="docs/images/ui-window.png" align="right" width="380" alt="The Vantage window in Foundry: whose-eyes dropdown, Eye, Overview, Show Players, Live and Rebuild buttons over the 3D view">
 
-The toolbar has **Eye** and **Overview** to switch camera, a dropdown to choose whose eyes to look through, **Show Players**, **Live**, and **Rebuild** (for big scene edits; most edits update by themselves).
+The toolbar has **Eye** and **Overview** to switch camera, a dropdown to choose whose eyes to look through, **Show Players**, **Live**, the **time of day** slider, the **weather** list, and **Rebuild** (for big scene edits; most edits update by themselves).
 
 <br clear="right">
 

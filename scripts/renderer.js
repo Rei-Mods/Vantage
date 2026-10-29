@@ -23,7 +23,8 @@ uniform vec4 uLPos[${MAX_LIGHTS}], uLCol[${MAX_LIGHTS}];
 // weather: uWx = kind (0 none / mist only, 1 rain, 2 snow, 3 ash, 4 embers, 5 leaves, 6 fireflies, 7 sand); uWxVel (px/s);
 // uWxP = density, streak (s), size (px), opacity; uWxQ = cell (px), wobble (px), max height over the floor (px, 0 = any), self-lit
 uniform int uWx; uniform vec3 uWxVel, uWxCol, uWxMistCol; uniform vec4 uWxP, uWxQ; uniform float uWxFlash, uWxMist, uWxGround, uWxTop;
-uniform sampler2D uShelter;   // ft: weather only falls above this (higher floors over the view, "suppress weather" regions)
+uniform sampler2D uShelter;
+uniform vec4 uHover, uHoverCol;   // what the mouse points at: x, z, radius, height (px); colour, 1 = ring on the floor / 2 = a door   // ft: weather only falls above this (higher floors over the view, "suppress weather" regions)
 uniform vec4 uSPos[${MAX_STANDEES}], uSUV[${MAX_STANDEES}], uSInfo[${MAX_STANDEES}], uSTint[${MAX_STANDEES}], uSRing[${MAX_STANDEES}];
 
 float hAt(vec2 xz){
@@ -386,6 +387,11 @@ void main(){
         } else if (dist < r) col *= 0.45 + 0.55 * pow(dist / r, 2.0);
         if (uSRing[s].a > 0.5 && abs(dist - r) < max(r * 0.07, 1.5 * texel)) { glow = 1.0; glowCol = uSRing[s].rgb * 1.6; }
       }
+      // where a click would go: a pulsing ring on the floor
+      if (uHoverCol.a > 0.5 && abs(p.y - uHover.w) < 1.5 * uPpf) {
+        float hd = distance(p.xz, uHover.xy);
+        if (abs(hd - uHover.z) < max(uHover.z * 0.08, 1.5 * texel) || (uHoverCol.a < 1.2 && hd < uHover.z * 0.18)) { glow = 1.0; glowCol = uHoverCol.rgb * (1.25 + 0.35 * sin(uTime * 6.0)); }
+      }
     } else {
       vec3 base = mix(vec3(0.20, 0.22, 0.25), textureLod(uFloor, uv, 3.0).rgb, 0.35);
       float rel = clamp(1.0 - (hb - p.y) / (30.0 * uPpf), 0.0, 1.0);
@@ -414,6 +420,9 @@ void main(){
         // stair risers: plain metal with a thin glowing nosing on every step
         col = base * (0.75 + 0.25 * rel);
         if (dt < 0.14) { glow = 1.0; glowCol = uTrim * 0.85; }
+      } else if ((kd == 3 || kd == 2) && uHoverCol.a > 1.5 && distance(p.xz, uHover.xy) < uHover.z && p.y < uHover.w + 10.5 * uPpf) {
+        // the door under the mouse lights up
+        col = mix(base, uHoverCol.rgb, 0.45); glow = 0.35; glowCol = uHoverCol.rgb;
       } else if (uSkin == 0) {
         // neon panels: dark metal, panel seams, a glowing trim strip under the top, doors tinted teal
         bool seam = abs(mod(p.y / uPpf, 4.0) - 2.0) > 1.85 || abs(mod(fu, 5.0) - 2.5) > 2.42;
@@ -871,6 +880,9 @@ export class PovRenderer {
       const gr = W.viewElev ?? W.baseElev ?? 0;
       gl.uniform1f(u.uWxGround ?? null, gr);
       gl.uniform1f(u.uWxTop ?? null, Math.max(gr + 32, (W.maxH ?? 0) + 12) * P);
+      const hv = opts.hover;
+      gl.uniform4f(u.uHover ?? null, hv?.x ?? 0, hv?.z ?? 0, hv?.r ?? 0, hv?.y ?? 0);
+      gl.uniform4f(u.uHoverCol ?? null, ...(hv?.col ?? [0, 0, 0]), hv ? (hv.door ? 2 : hv.dot ? 1 : 1.3) : 0);   // 1 = ring + dot, 1.3 = ring, 2 = a door
       gl.uniform1f(u.uCutT, opts.cutT ?? 0); gl.uniform1f(u.uCutH, opts.cutH ?? 1e9);
       const cap = opts.cap; gl.uniform4fv(u.uCap, cap ?? [0, 0, 0, 0]); gl.uniform3f(u.uCapRH, cap ? opts.capR : 0, cap ? opts.capH : 1e9, cap ? (opts.capTop ?? opts.capH) : 1e9);
       gl.uniform1i(u.uNL, Math.min(lights.length, MAX_LIGHTS)); gl.uniform1i(u.uNS, ns);

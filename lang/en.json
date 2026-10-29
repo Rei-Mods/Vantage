@@ -137,7 +137,7 @@
       "Live": "Live",
       "LiveTitle": "Players' screens follow your camera live",
       "RebuildTitle": "Rebuild from the scene (walls, levels, lights, tokens)",
-      "Help": "Drag: look · WASD: move · Q/E: down/up (Overview: turn) · Wheel: zoom · Shift: fast",
+      "Help": "Drag: look · WASD: move · Q/E: down/up (Overview: turn) · Wheel: zoom · Shift: fast · Double-click: walk there · Click: door / pick a token · Right-click: target",
       "Hidden": "(hidden)",
       "TokensView": "{name}'s view",
       "TimeTitle": "Time of day: drag from noon to night. Sets the scene's darkness and the Day cycle lighting mood.",
@@ -149,7 +149,12 @@
       "Error": "Vantage: {error}",
       "Sent": "Vantage: sent to players.",
       "LiveOn": "Vantage: players now follow your camera. Click Live again to stop.",
-      "DayCycle": "Vantage: this scene's lighting mood is now Day cycle, so the 3D light follows the time of day."
+      "DayCycle": "Vantage: this scene's lighting mood is now Day cycle, so the 3D light follows the time of day.",
+      "PickToken": "Vantage: pick a token first (click its figure, or choose whose eyes).",
+      "NotYours": "Vantage: you can only move your own tokens.",
+      "Blocked": "Vantage: a wall is in the way.",
+      "Locked": "Vantage: that door is locked.",
+      "TargetScene": "Vantage: targeting works on the scene that is open on the map."
     },
     "Scene": {
       "Legend": "Vantage (3D view)",

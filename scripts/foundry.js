@@ -4,6 +4,7 @@ export const setting = k => game.settings.get(MOD, k);
 /** localize a VANTAGE.* key; with data, format it */
 export const L = (k, data) => data ? game.i18n.format(`VANTAGE.${k}`, data) : game.i18n.localize(`VANTAGE.${k}`);
 
+const TARGET = [1.0, 0.42, 0.08];   // a token you target: an orange ring
 const DISPO = {"-2": [0.75, 0.35, 1.0], "-1": [1.0, 0.18, 0.22], "0": [1.0, 0.85, 0.2], "1": [0.2, 0.9, 1.0]};
 
 export function rectOf(scene) {
@@ -46,7 +47,7 @@ export function sceneData(scene, viewLevel) {
   }
   // sight NORMAL = a full wall; LIMITED / PROXIMITY / DISTANCE (windows, foliage, glass) = a low wall you can see over
   const NORMAL = CONST.WALL_SENSE_TYPES?.NORMAL ?? 20;
-  const walls = scene.walls.contents.map(w => ({c: [...w.c], sight: w.sight, low: !!w.sight && w.sight !== NORMAL,
+  const walls = scene.walls.contents.map(w => ({id: w.id, c: [...w.c], sight: w.sight, low: !!w.sight && w.sight !== NORMAL,
     door: w.door, ds: w.ds, levels: [...(w.levels ?? [])]}));
   return {...r, levels, walls, regions: regionsOf(scene), viewLevel: viewLevel ?? scene.levels?.contents?.[0]?.id ?? "base"};
 }
@@ -153,7 +154,8 @@ export function tokensOf(scene, {playerView = false} = {}) {
       id: doc.id, name: doc.name, src: srcs[0], srcs,
       x: doc.x + doc.width * gs / 2 - r.ox, y: doc.y + doc.height * gs / 2 - r.oy,
       elevation: doc.elevation ?? 0, size: Math.max(doc.width, doc.height), rotation: doc.rotation ?? 0,
-      ringColor: DISPO[String(doc.disposition)] ?? DISPO["0"], hidden: !!doc.hidden, level: doc.level ?? null, loot, flat, tilt
+      ringColor: doc.object?.isTargeted ? TARGET : DISPO[String(doc.disposition)] ?? DISPO["0"], targeted: !!doc.object?.isTargeted,
+      hidden: !!doc.hidden, level: doc.level ?? null, loot, flat, tilt
     });
   }
   return out;
