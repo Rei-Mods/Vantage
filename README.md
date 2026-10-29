@@ -362,6 +362,8 @@ Hooks.once("vantageReady", api => { /* the API is ready */ });
 
 Vantage draws one full-screen ray-march per frame, and only while the camera moves. On a mid-range desktop GPU, a 1080p frame with shadows takes about 2 ms. Building a scene takes 1–7 seconds the first time, depending on its size. The last two built levels are kept, so switching back is instant. Nothing runs while the window is closed.
 
+The first time you open a scene, your GPU compiles a shader for it with just the wall skins and looks that scene uses: a few seconds, while the scene builds, and remembered by the browser after that. Picking a skin you haven't used yet compiles it in the background (the old one stays on screen until it's ready).
+
 On slow laptops: set *3D view resolution* to **Fast**, keep *Lower resolution while moving* on, and use *Shadows + corner shading: Corner shading only*.
 
 ## Troubleshooting & FAQ

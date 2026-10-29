@@ -30,5 +30,5 @@ Everything is new, so here is the full list:
 - **Show Players** (snapshot, phones included) and **Live** (players follow your camera).
 - **Per-scene overrides** (height map strength, dark-rock switch, wall skin, lighting mood, light colour, sun direction) in Scene Config.
 - Lights on raised areas, stairs and slopes sit on top instead of inside.
-- Performance: draws only while the camera moves; resolution presets; optional lower resolution while moving; last 2 levels cached; the shader compiles in the background while the scene builds, so the page never freezes.
+- Performance: draws only while the camera moves; resolution presets; optional lower resolution while moving; last 2 levels cached; the shader compiles in the background while the scene builds, with only the wall skins and looks the scene uses (a few seconds the first time, then cached), so the page never freezes.
 - English language file; API (`game.modules.get("vantage").api`) and a `vantageReady` hook.

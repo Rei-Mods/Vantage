@@ -447,7 +447,7 @@ vec3 wallSkin(int sk, float u, float y, float dt, float foot, vec2 uv, vec2 xz, 
   } else if (sk == 21) {    // padded and tufted: dark leather in diamonds, buttons at the corners (lounges, clubs, cells)
     vec2 q = vec2(u + foot, foot - u) / 1.1, f = fract(q) - 0.5;
     float r = max(abs(f.x), abs(f.y));
-    c = vec3(0.17, 0.07, 0.14) * (0.65 + 0.5 * (1.0 - r * 1.6)) * (0.92 + 0.1 * vnoise(vec2(u, y) * 4.0));
+    c = vec3(0.26, 0.10, 0.20) * (0.65 + 0.5 * (1.0 - r * 1.6)) * (0.92 + 0.1 * vnoise(vec2(u, y) * 4.0));
     if (length(abs(f) - 0.5) < 0.09) c = mix(c, vec3(0.05), dtl(0.1, px));
     if (foot < 0.4) c = vec3(0.55, 0.56, 0.58);   // a chrome skirting
     if (door) c *= 0.8;
@@ -496,7 +496,7 @@ vec3 wallSkin(int sk, float u, float y, float dt, float foot, vec2 uv, vec2 xz, 
     vec2 q = vec2(u, y) * 6.0;
     float o = mod(floor(q.x) + floor(q.y), 2.0);
     float sh = o < 1.0 ? sin(fract(q.x) * 3.1416) : sin(fract(q.y) * 3.1416) * 0.6;
-    c = vec3(0.05, 0.055, 0.06) + vec3(0.07) * mix(0.4, sh, dtl(0.17, px));
+    c = vec3(0.08, 0.085, 0.095) + vec3(0.09) * mix(0.4, sh, dtl(0.17, px));
     c *= mix(1.0, 0.4, sstep(0.04, 0.02, blocks(u, foot, 5.0, 4.0, 0.0).z) * dtl(0.1, px));
     if (door) c *= 1.25;
     if (abs(foot - 3.6) < 0.05) c = vec3(0.7, 0.05, 0.05);
@@ -634,9 +634,9 @@ vec3 wallSkin(int sk, float u, float y, float dt, float foot, vec2 uv, vec2 xz, 
 #if SK_39
   } else if (sk == 39) {    // server racks: black cabinets full of units, rows of status LEDs
     float ru = fract(u / 2.0) * 2.0, unit = floor(foot / 0.15), k = dtl(0.06, px);
-    c = vec3(0.04, 0.045, 0.05);
+    c = vec3(0.07, 0.075, 0.08);
     if (ru > 0.15 && ru < 1.85 && foot > 0.5 && foot < 7.0) {
-      c = vec3(0.09, 0.095, 0.10) * (0.8 + 0.3 * hash(vec2(floor(u / 2.0), unit)));
+      c = vec3(0.14, 0.15, 0.16) * (0.8 + 0.3 * hash(vec2(floor(u / 2.0), unit)));
       if (fract(foot / 0.15) < 0.12) c *= 0.4;
       float led = hash(vec2(floor(u * 6.0), unit) + 1.3);
       gEmit = vec3(0.03, 0.08, 0.05) * (1.0 - k);   // far away: the LEDs blur to a faint glow
