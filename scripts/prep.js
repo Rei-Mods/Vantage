@@ -71,7 +71,8 @@ export async function analyze(scene) {
   const fg = scene.foregroundElevation ?? scene.environment?.foregroundElevation ?? 20;
   for (const t of scene.tiles?.contents ?? []) {
     if (t.hidden) continue;
-    const name = decodeURIComponent((t.texture?.src ?? "").split("/").pop() ?? "");
+    const raw = (t.texture?.src ?? "").split("/").pop() ?? "";
+    let name = raw; try { name = decodeURIComponent(raw); } catch (e) { /* a literal % in the file name */ }
     if (SKIP.test(name) || /\.(webm|mp4)$/i.test(name)) continue;
     const area = t.width * t.height, cell = r.gridPx * r.gridPx;
     if (area < 0.3 * cell || area > 0.4 * r.W * r.H) continue;

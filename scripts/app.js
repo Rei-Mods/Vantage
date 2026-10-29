@@ -174,7 +174,8 @@ export class PovWindow extends ApplicationV2 {
   }
 
   async rebuild() {
-    if (!this.view || this._busy) return;
+    if (!this.view) return;
+    if (this._busy) return this._rebuildSoon();   // a change while building: build again right after
     this._busy = true;
     const cam = foundry.utils.deepClone(this.view.cam), self = this.view.selfId;
     this.view.clearCache();   // the scene changed: cached levels are stale
@@ -778,7 +779,7 @@ export class PovViewer extends ApplicationV2 {
       this.view.render({forPlayers: true});
       followCamera(this.view, game.scenes.get(this.liveScene), this);
       const t = this.element?.querySelector(".window-title"); if (t) t.textContent = this.title;
-      if (cutOn) this._raf = requestAnimationFrame(frame);
+      if (cutOn || this.view.isMoving()) this._raf = requestAnimationFrame(frame);   // a cutscene, or figures gliding to where they moved
       else if (anim) this._tmo = setTimeout(() => { this._tmo = null; this._raf = requestAnimationFrame(frame); }, 30);   // ~30 fps while something animates
     };
     this._raf = requestAnimationFrame(frame);
@@ -789,11 +790,25 @@ export class PovViewer extends ApplicationV2 {
     clearTimeout(this._visT);
     this._visT = setTimeout(() => { const sc = game.scenes.get(this.liveScene); if (this.view?.world && sc) { applyVision(this.view, sc); this.applyLive(this.lastLive); } }, 150);
   }
-  /** the GM changed this scene's look, time of day or weather */
-  relook(doc) {
+  /** the GM changed this scene's look, time of day or weather (a redraw), or something it's built from (a rebuild) */
+  relook(doc, changes = {}) {
     if (!this.view?.world || doc.id !== this.liveScene) return;
+    const own = foundry.utils.hasProperty(changes, `flags.${MOD}`);
+    const keys = own ? Object.keys(foundry.utils.flattenObject(changes.flags[MOD] ?? {})).map(k => k.replace(/^-=/, "").split(".")[0]) : [];
+    if (!keys.every(k => LOOK_KEYS.includes(k)) || "background" in changes) return this.rebuildSoon();
     Object.assign(this.view.opts, viewOptions(doc), {showHidden: false});
     this.applyLive(this.lastLive);
+  }
+  /** walls, doors, lights, regions or levels changed: build the 3D scene again (debounced; once at a time) */
+  rebuildSoon() {
+    clearTimeout(this._rbT);
+    this._rbT = setTimeout(async () => {
+      if (this.mode !== "live" || !this.lastLive) return;
+      if (this._starting) return this.rebuildSoon();
+      this._starting = true;
+      try { await this.startLive(this.lastLive); } finally { this._starting = false; }
+      this.applyLive(this.lastLive);
+    }, 700);
   }
 
   async refreshTokens() {

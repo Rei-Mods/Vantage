@@ -12,14 +12,20 @@ export const TILT_DEG = 40;
 
 /** pixel indices (heightfield grid) inside canvas-space polygons [[x0,y0,x1,y1,...], ...] (even-odd, so holes cut out) */
 function rasterPolys(polys, data, hs, hw, hh) {
-  const [c, ctx] = canvas2d(hw, hh);
-  ctx.setTransform(hs, 0, 0, hs, -data.ox * hs, -data.oy * hs);
+  // only the polygons' bounding box is drawn and read back (a whole-map canvas per region churns a lot of memory)
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const pts of polys) { if (pts.length < 6) continue; for (let i = 0; i < pts.length; i += 2) { const x = (pts[i] - data.ox) * hs, y = (pts[i + 1] - data.oy) * hs; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+  x0 = Math.max(0, Math.floor(x0) - 1); y0 = Math.max(0, Math.floor(y0) - 1); x1 = Math.min(hw, Math.ceil(x1) + 1); y1 = Math.min(hh, Math.ceil(y1) + 1);
+  const bw = x1 - x0, bh = y1 - y0, out = [];
+  if (!(bw > 0 && bh > 0)) return out;
+  const [c, ctx] = canvas2d(bw, bh);
+  ctx.setTransform(hs, 0, 0, hs, -data.ox * hs - x0, -data.oy * hs - y0);
   ctx.beginPath();
   for (const pts of polys) { if (pts.length < 6) continue; ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.closePath(); }
   ctx.fillStyle = "#fff"; ctx.fill("evenodd");
-  const d = ctx.getImageData(0, 0, hw, hh).data, out = [];
-  for (let k = 0, j = 3; k < hw * hh; k++, j += 4) if (d[j] > 127) out.push(k);
-  return out;
+  const d = ctx.getImageData(0, 0, bw, bh).data;
+  for (let y = 0, j = 3; y < bh; y++) for (let x = 0; x < bw; x++, j += 4) if (d[j] > 127) out.push((y0 + y) * hw + x0 + x);
+  return out;   // row by row: already in order
 }
 
 const imgCache = new Map();
@@ -339,9 +345,11 @@ export async function buildWorld(data, opts = {}) {
 
   // ---- raised areas that look like something: per pixel the look, which way the front faces, and the region
   const propData = new Uint8Array(hw * hh * 4), propInfo = [], propPics = [];
+  const inR = propRegions.length ? new Uint8Array(hw * hh) : null;   // one mask, cleared after each region
   for (const [ri, pr] of propRegions.entries()) {
     if (ri >= 254) break;
-    const inR = new Uint8Array(hw * hh); for (const k of pr.px) inR[k] = 1;
+    if (ri > 0) for (const k of propRegions[ri - 1].px) inR[k] = 0;
+    for (const k of pr.px) inR[k] = 1;
     // front: as chosen (compass degrees, 0 = top of the map), else the side with the most open floor in front of it
     let az = Number(pr.front);
     if (!(pr.front !== null && pr.front !== undefined && pr.front !== "" && Number.isFinite(az))) {
@@ -400,13 +408,16 @@ export async function buildWorld(data, opts = {}) {
   const N = hw * hh, roofed = new Uint8Array(N);   // 1 = gets a ceiling
   let ceilHeights = [];   // the different ceiling heights (ft), at most 8
   const rgSky = (data.regions ?? []).filter(rg => rg.polys?.length && (rg.sky === "open" || rg.sky === "roof" || (rg.dry && rg.sky !== "open")));
+  let wall = null;   // auto: 1 = a full wall or a door, 2 = a low wall (window, fence) - for telling rooms from fenced yards
   if (ceilMode !== "none" || rgSky.length) {
     if (ceilMode === "all") roofed.fill(1);
     else if (ceilMode === "auto") {
-      // what closes a room: walls you can't see through (and windows), doors open or shut; not invisible walls
-      const wall = new Uint8Array(N);
+      // what closes a room: walls you can't see through (and windows), doors open or shut; not invisible walls. Places
+      // closed in mostly by low walls (fences, hedges, terrain walls) are told apart below and stay open to the sky
+      wall = new Uint8Array(N);
       for (const wl of data.walls ?? []) {
         if (!((wl.door ?? 0) > 0 || wl.sight)) continue;
+        const low = !((wl.door ?? 0) > 0) && !!wl.low;
         if (wl.levels?.length && !wl.levels.some(id => setIds.has(id))) continue;
         const x1 = (wl.c[0] - data.ox) * hs, y1 = (wl.c[1] - data.oy) * hs, x2 = (wl.c[2] - data.ox) * hs, y2 = (wl.c[3] - data.oy) * hs;
         const n = Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 0.5) + 1;
@@ -414,7 +425,7 @@ export async function buildWorld(data, opts = {}) {
           const cx = x1 + (x2 - x1) * s2 / n, cy = y1 + (y2 - y1) * s2 / n;
           for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
             const xi = Math.round(cx + dx), yi = Math.round(cy + dy);
-            if (xi >= 0 && yi >= 0 && xi < hw && yi < hh) wall[yi * hw + xi] = 1;
+            if (xi >= 0 && yi >= 0 && xi < hw && yi < hh) { const j = yi * hw + xi; wall[j] = low ? (wall[j] || 2) : 1; }
           }
         }
       }
@@ -482,11 +493,13 @@ export async function buildWorld(data, opts = {}) {
       }
     }
     // regions: "suppress weather" areas and "ceiling here" get one, "open sky here" never does
+    const forced = new Uint8Array(rgSky.length ? N : 0);
     for (const rg of rgSky) {
       const v = rg.sky === "open" ? 0 : 1;
       if (v === 1 && ceilMode === "none" && rg.sky !== "roof") continue;
-      for (const k of rasterPolys(rg.polys, data, hs, hw, hh)) roofed[k] = v;
+      for (const k of rasterPolys(rg.polys, data, hs, hw, hh)) { roofed[k] = v; if (forced.length) forced[k] = v; }
     }
+
     // each roofed area (connected) gets one flat ceiling: its typical floor + wall height (rounded to 0.5 ft), so rooms on
     // a height-mapped floor sit right too
     const tops = [], q = new Int32Array(N);
@@ -502,6 +515,12 @@ export async function buildWorld(data, opts = {}) {
         if (x < hw - 1 && ok[j = k + 1]) { ok[j] = 0; q[qt++] = j; }
         if (k >= hw && ok[j = k - hw]) { ok[j] = 0; q[qt++] = j; }
         if (k < N - hw && ok[j = k + hw]) { ok[j] = 0; q[qt++] = j; }
+      }
+      // closed in mostly by low walls (a fenced yard, a ring of hedges or terrain walls), not by real walls: no ceiling
+      if (wall && o.indoors !== "in") {   // (on an interior map a cage of bars is still under the roof)
+        let full = 0, low = 0, forcedAny = false;
+        for (let i = 0; i < qt; i++) { const k = q[i], w = wall[k]; if (w === 1) full++; else if (w === 2) low++; if (forced.length && forced[k] === 1) forcedAny = true; }
+        if (low > full && !forcedAny) continue;
       }
       const fl = [], step = Math.max(1, Math.floor(qt / 4096));
       for (let i = 0; i < qt; i += step) { const k = q[i]; if (kind[k] !== KIND.wall && kind[k] !== KIND.door && kind[k] !== KIND.prop) fl.push(levelHeight[k]); }

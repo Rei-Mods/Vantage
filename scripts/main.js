@@ -4,6 +4,7 @@ import {WALL_SKINS, MOODS, WEATHER} from "./renderer.js";
 import {PROP_LOOKS} from "./world.js";
 import {prepDialog} from "./prep.js";
 import {PovWindow, PovViewer, onSocket, sendSnapshot} from "./app.js";
+import {releaseAll as releaseSound} from "./sound.js";
 
 const S = k => `VANTAGE.Settings.${k}`;
 
@@ -46,9 +47,21 @@ function shadowOpts() { const sh = game.settings.get(MOD, "shadows"); return {sh
 const viewerTokens = foundry.utils.debounce(() => PovViewer.instance?.refreshTokens(), 300);
 for (const h of ["createToken", "updateToken", "deleteToken"]) Hooks.on(h, () => { if (PovViewer.instance?.mode === "live") viewerTokens(); });
 // a figure choice set on an actor's prototype token applies to its tokens already on the map
-Hooks.on("updateScene", doc => PovViewer.instance?.relook?.(doc));
-// players: their 3D view follows their sight
-Hooks.on("sightRefresh", () => { if (game.user.isGM) return; PovViewer.instance?.visionSoon?.(); PovWindow.instance?.visionSoon?.(); });
+Hooks.on("updateScene", (doc, changes) => PovViewer.instance?.relook?.(doc, changes));
+// players' Live view: the scene it's built from changed (a door opened, a wall moved, a light, a region, a level)
+const sceneOf = doc => { let d = doc?.parent ?? doc?.scene; while (d && d.documentName !== "Scene") d = d.parent; return d?.id ?? null; };
+for (const h of ["createWall", "updateWall", "deleteWall", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createLevel", "updateLevel", "deleteLevel",
+  "createRegion", "updateRegion", "deleteRegion", "createRegionBehavior", "updateRegionBehavior", "deleteRegionBehavior"])
+  Hooks.on(h, doc => { const v = PovViewer.instance; if (v?.mode === "live" && v.liveScene && sceneOf(doc) === v.liveScene) v.rebuildSoon(); });
+// players: their 3D view follows their sight (and shows the figures they can see now)
+Hooks.on("sightRefresh", () => {
+  if (game.user.isGM) return;
+  PovViewer.instance?.visionSoon?.(); PovWindow.instance?.visionSoon?.();
+  if (PovViewer.instance?.mode === "live") viewerTokens();
+  PovWindow.instance?._tokensSoon?.();
+});
+// another scene (or a reload): ambient sounds stop following a 3D camera
+Hooks.on("canvasTearDown", () => releaseSound());
 for (const h of ["createMeasuredTemplate", "updateMeasuredTemplate", "deleteMeasuredTemplate"]) Hooks.on(h, doc => {
   const v = PovViewer.instance; if (v?.view?.world && v.liveScene === doc.parent?.id) { v.view.setTemplates(templatesOf(doc.parent, {playerView: true})); v.applyLive(v.lastLive); }
 });

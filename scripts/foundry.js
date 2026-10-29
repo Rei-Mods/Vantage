@@ -257,7 +257,8 @@ const boolOr = (v, dflt) => v === undefined ? dflt : v === true || v === "true";
 const INDOOR_WORDS = /\b(club|nightclub|bar|tavern|inn|pub|saloon|shop|store|office|lab|laboratory|apartments?|house|home|mansion|manor|hall|library|church|chapel|cathedral|dungeon|crypt|tomb|catacombs?|caves?|cavern|mines?|sewers?|vault|bunker|prison|jail|warehouse|factory|interior|inside|basement|cellar|casino|arcade|restaurant|diner|kitchen|hospital|clinic|bank|hotel|motel|museum|theat(?:er|re)|gym|garage|hangar|corridors?|hallway|brothel|den|lair|server|penthouse|loft|studio|bathhouse|throne|ballroom|barracks|armory|armoury|forge|smithy)\b/i;
 const OUTDOOR_WORDS = /\b(street|streets|city|road|highway|alley|forest|woods|jungle|desert|canyon|river|lake|beach|coast|shore|camp|campsite|field|farm|village|town|market|bazaar|plaza|square|park|garden|graveyard|cemetery|ruins|rooftops?|deck|docks?|harbou?r|port|bridge|mountain|cliffs?|swamp|marsh|island|battlefield|courtyard|exterior|outside|crash|wilderness|valley|oasis|crossroads|outpost|wasteland|junkyard)\b/i;
 export function indoorsGuess(scene) {
-  const names = [scene?.name ?? "", ...(scene?.levels?.contents ?? []).map(l => decodeURIComponent(String(l.background?.src ?? "").split("/").pop() ?? ""))].join(" ").replace(/[_\-.]+/g, " ");
+  const dec = s => { try { return decodeURIComponent(s); } catch (e) { return s; } };   // a literal % in a file name
+  const names = [scene?.name ?? "", ...(scene?.levels?.contents ?? []).map(l => dec(String(l.background?.src ?? "").split("/").pop() ?? ""))].join(" ").replace(/[_\-.]+/g, " ");
   const i = INDOOR_WORDS.test(names), o = OUTDOOR_WORDS.test(names);
   return i && !o ? "in" : o && !i ? "out" : null;
 }

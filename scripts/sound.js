@@ -31,6 +31,9 @@ export function followCamera(view, scene, who) {
   }
 }
 
+/** whoever the sounds follow lets go (the canvas is torn down: another scene, a reload) */
+export function releaseAll() { if (owner) release(owner); }
+
 /** back to Foundry's own listeners (the tokens on the map), centred */
 export function release(who) {
   if (owner !== who || !canvas?.sounds) return;
