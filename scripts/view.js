@@ -36,6 +36,22 @@ export function flashAt(t) {
 }
 
 const D2R = Math.PI / 180;
+
+/** a camera path (cutscenes): keys = [{pos: [x,y,z] px, yaw, pitch, fov}], u = 0..1 -> a free camera, smooth through every
+ *  key (Catmull-Rom), easing in and out at the ends */
+export function camAt(keys, u) {
+  const n = keys.length; if (!n) return null; if (n === 1) return {...keys[0], pos: [...keys[0].pos]};
+  const e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;   // ease in-out
+  const x = Math.min(0.99999, Math.max(0, e)) * (n - 1), i = Math.floor(x), t = x - i;
+  const P = k => keys[Math.max(0, Math.min(n - 1, k))];
+  const cr = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t);
+  // yaw unwrapped so it turns the short way
+  const yaws = [P(i - 1).yaw, P(i).yaw, P(i + 1).yaw, P(i + 2).yaw];
+  for (let k = 1; k < 4; k++) while (yaws[k] - yaws[k - 1] > 180) yaws[k] -= 360;
+  for (let k = 1; k < 4; k++) while (yaws[k] - yaws[k - 1] < -180) yaws[k] += 360;
+  return {pos: [0, 1, 2].map(j => cr(P(i - 1).pos[j], P(i).pos[j], P(i + 1).pos[j], P(i + 2).pos[j])),
+    yaw: cr(...yaws), pitch: cr(P(i - 1).pitch, P(i).pitch, P(i + 1).pitch, P(i + 2).pitch), fov: cr(P(i - 1).fov, P(i).fov, P(i + 1).fov, P(i + 2).fov)};
+}
 const norm = v => { const l = Math.hypot(...v) || 1; return v.map(x => x / l); };
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
@@ -227,6 +243,14 @@ export class PovView {
     const r = norm(cross(f, [0, 1, 0])), u = cross(r, f);
     return {pos, f, r, u, fov: c.fov};
   }
+
+  /** the camera as it is now, as a free camera (a cutscene key) */
+  freeCam() {
+    const v = this.vectors();
+    return {pos: [...v.pos], yaw: Math.atan2(v.f[2], v.f[0]) / D2R, pitch: Math.asin(Math.max(-1, Math.min(1, v.f[1]))) / D2R, fov: this.cam.fov};
+  }
+  /** put the camera on a cutscene key (a free eye camera, no token) */
+  setFreeCam(k) { if (!k) return; Object.assign(this.cam, {mode: "eye", pos: [...k.pos], yaw: k.yaw, pitch: k.pitch, fov: k.fov}); this.selfId = null; this._camGlide = null; }
 
   /** move in the camera's ground plane (ft); dz = forward, dx = right, dy = up */
   move(dxFt, dzFt, dyFt) {

@@ -1,8 +1,8 @@
 // Vantage - the GM's 3D window, the players' viewer, and snapshot/live sharing
-import {PovView} from "./view.js";
+import {PovView, camAt} from "./view.js";
 import {MOD, L, setting, sceneData, viewLevelFor, tokensOf, lightsOf, buildOptions, viewOptions, lookOf, sceneFlag, weatherOf, rectOf, templatesOf, visionMask} from "./foundry.js";
 import {WEATHER} from "./renderer.js";
-const LOOK_KEYS = ["wallSkin", "mood", "sunAz", "lightColor", "weather"];
+const LOOK_KEYS = ["wallSkin", "mood", "sunAz", "lightColor", "weather", "path"];
 
 const {ApplicationV2} = foundry.applications.api;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
@@ -25,6 +25,7 @@ export function onSocket(msg) {
     }
     case "live": PovViewer.onLive(msg); break;
     case "live-end": PovViewer.onLiveEnd(msg); break;
+    case "cutscene": PovViewer.onCutscene(msg); break;
     case "want-snaps": if (game.user.isGM) PovWindow.phoneUsers.add(msg.from); break;
   }
 }
@@ -110,7 +111,18 @@ export class PovWindow extends ApplicationV2 {
         <button type="button" data-a="live" title="${L("Window.LiveTitle")}"><i class="fa-solid fa-tower-broadcast"></i> ${L("Window.Live")}</button>` : ""}
         ${isGM ? `<label class="vtg-time" data-tooltip="${L("Window.TimeTitle")}"><i class="fa-solid fa-sun"></i><input type="range" class="vtg-dark" min="0" max="1" step="0.01" value="0"><i class="fa-solid fa-moon"></i></label>
         <select class="vtg-weather" data-tooltip="${L("Window.WeatherTitle")}"></select>` : ""}
+        <button type="button" data-a="film" title="${L("Window.FilmTitle")}"><i class="fa-solid fa-film"></i></button>
         <button type="button" data-a="rebuild" title="${L("Window.RebuildTitle")}"><i class="fa-solid fa-rotate"></i></button>
+      </div>
+      <div class="vtg-film" style="display:none">
+        <div class="vtg-film-row"><b>${L("Film.Title")}</b><span class="vtg-film-n"></span></div>
+        <div class="vtg-film-row">
+          ${isGM ? `<button type="button" data-f="add" title="${L("Film.AddTitle")}"><i class="fa-solid fa-plus"></i> ${L("Film.Add")}</button>
+          <button type="button" data-f="clear" title="${L("Film.ClearTitle")}"><i class="fa-solid fa-trash"></i></button>` : ""}
+          <button type="button" data-f="play" title="${L("Film.PlayTitle")}"><i class="fa-solid fa-play"></i> ${L("Film.Play")}</button>
+          <button type="button" data-f="rec" title="${L("Film.RecordTitle")}"><i class="fa-solid fa-circle"></i> ${L("Film.Record")}</button>
+        </div>
+        ${isGM ? `<div class="vtg-film-row"><label>${L("Film.Seconds")} <input type="number" class="vtg-film-dur" min="2" max="180" step="1" value="8"></label></div>` : ""}
       </div>
       <div class="vtg-cover" style="display:none"></div>
       <div class="vtg-help">${L("Window.Help")}</div>
@@ -256,6 +268,66 @@ export class PovWindow extends ApplicationV2 {
     this.view.cam.mode = mode;
     this.fillTokenSelect(); this.updateButtons(); this.refreshCover();
     this.requestRender();
+  }
+
+  // ---------------------------------------------------------------- cutscenes and clips
+  syncFilm() {
+    const st = this.stage; if (!st) return;
+    const n = st.querySelector(".vtg-film-n"); if (n) n.textContent = ` ${L("Film.Points", {n: this.path?.keys.length ?? 0})}`;
+    const d = st.querySelector(".vtg-film-dur"); if (d && document.activeElement !== d) d.value = String(this.path?.duration ?? 8);
+    st.querySelector('[data-f="rec"]')?.classList.toggle("active", !!this.recorder);
+    st.querySelector('[data-f="play"]')?.classList.toggle("active", !!this.playing);
+    st.querySelector('[data-a="film"]')?.classList.toggle("active", !!this.recorder || !!this.playing);
+  }
+  savePath() {
+    this.syncFilm();
+    if (!game.user.isGM) return;
+    clearTimeout(this._pathT);
+    this._pathT = setTimeout(() => this.scene.update({[`flags.${MOD}.path`]: foundry.utils.deepClone(this.path)}).catch(e => console.error(MOD, e)), 400);
+  }
+  /** fly the camera along the saved points; players in Live play it too, in step */
+  playPath({record = false} = {}) {
+    const keys = this.path?.keys ?? [];
+    if (keys.length < 2) return ui.notifications.info(L("Notify.NeedPoints"));
+    if (this.playing) return;
+    this.playing = {keys: foundry.utils.deepClone(keys), dur: this.path.duration || 8, t0: performance.now(), saved: {cam: foundry.utils.deepClone(this.view.cam), self: this.view.selfId}, record};
+    if (this.live) emit({t: "cutscene", from: game.user.id, sceneId: this.scene.id, keys: this.playing.keys, duration: this.playing.dur});
+    this.syncFilm(); this.requestRender();
+  }
+  endPlay() {
+    const p = this.playing; if (!p) return;
+    this.playing = null;
+    this.view.cam = p.saved.cam; this.view.selfId = p.saved.self;
+    if (p.record) setTimeout(() => this.stopRecord(), 200);
+    if (this.live) this.broadcastLive(true);
+    this.syncFilm(); this.requestRender();
+  }
+  /** record what the window shows to a video file (MP4 where the browser can, else WebM); with points, plays them */
+  startRecord(withPath = false) {
+    if (this.recorder || typeof MediaRecorder === "undefined") return;
+    const types = ["video/mp4;codecs=avc1.640028", "video/mp4", "video/webm;codecs=vp9", "video/webm"];
+    const mimeType = types.find(t => MediaRecorder.isTypeSupported?.(t)) ?? "";
+    let rec;
+    try { rec = new MediaRecorder(this.canvasEl.captureStream(30), {mimeType, videoBitsPerSecond: 12e6}); }
+    catch (e) { console.error(MOD, e); return ui.notifications.error(L("Notify.Error", {error: e.message})); }
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data?.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      const type = rec.mimeType || mimeType || "video/webm", blob = new Blob(chunks, {type});
+      const name = `vantage-${this.scene.name.replace(/[^\w-]+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.${/mp4/.test(type) ? "mp4" : "webm"}`;
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+      ui.notifications.info(L("Notify.Recorded", {name}));
+    };
+    rec.start(250); this.recorder = rec;
+    if (withPath) this.playPath({record: true});
+    this.syncFilm(); this.requestRender();
+  }
+  stopRecord() {
+    const r = this.recorder; if (!r) return;
+    this.recorder = null;
+    try { r.stop(); } catch (e) { /* already stopped */ }
+    this.syncFilm();
   }
 
   // ---------------------------------------------------------------- cover
@@ -428,6 +500,18 @@ export class PovWindow extends ApplicationV2 {
       catch (e) { console.error(MOD, e); ui.notifications.error(L("Notify.Error", {error: e.message})); }
     });
     this.syncLookUI();
+    // cutscenes: camera points saved with the scene, played smoothly (players in Live follow), recorded to a video
+    root.querySelector(".vtg-film")?.addEventListener("click", ev => {
+      const f = ev.target.closest("[data-f]")?.dataset.f; if (!f || !this.view?.world) return;
+      if (f === "add") { this.path.keys.push(this.view.freeCam()); this.savePath(); }
+      else if (f === "clear") { this.path.keys = []; this.savePath(); }
+      else if (f === "play") this.playPath();
+      else if (f === "rec") this.recorder ? this.stopRecord() : this.startRecord(this.path.keys.length >= 2);
+      this.syncFilm();
+    });
+    root.querySelector(".vtg-film-dur")?.addEventListener("change", ev => { this.path.duration = Math.max(2, Math.min(180, Number(ev.target.value) || 8)); this.savePath(); });
+    this.path = foundry.utils.deepClone(sceneFlag(this.scene, "path") ?? {keys: [], duration: 8});
+    this.syncFilm();
 
     root.querySelector(".vtg-bar").addEventListener("click", ev => {
       const a = ev.target.closest("[data-a]")?.dataset.a; if (!a || !this.view?.world) return;
@@ -443,6 +527,7 @@ export class PovWindow extends ApplicationV2 {
       } else if (a === "snap") return this.shareSnapshot();
       else if (a === "live") return this.toggleLive();
       else if (a === "rebuild") return this.rebuild();
+      else if (a === "film") { const p = this.stage.querySelector(".vtg-film"); p.style.display = p.style.display === "none" ? "" : "none"; return; }
       this.updateButtons(); this.requestRender();
     });
   }
@@ -465,9 +550,14 @@ export class PovWindow extends ApplicationV2 {
     const tick = now => {
       this._raf = null;
       if (!this.view?.world) return;
-      const anim = this.animating();
+      const anim = this.animating() || !!this.playing || !!this.recorder;
+      if (this.playing) {
+        const p = this.playing, u = Math.min(1, (now - p.t0) / 1000 / p.dur);
+        this.view.setFreeCam(camAt(p.keys, u));
+        if (u >= 1) { this.view.render(); return this.endPlay(); }
+      }
       // animation alone: about 30 fps is plenty (saves the GPU); camera moves still draw every frame
-      if (anim && !this.keys.size && !this._moving && !this.view.isMoving() && now - (this._lastFrame ?? 0) < 31) { this._raf = requestAnimationFrame(tick); return; }
+      if (anim && !this.playing && !this.keys.size && !this._moving && !this.view.isMoving() && now - (this._lastFrame ?? 0) < 31) { this._raf = requestAnimationFrame(tick); return; }
       this._lastFrame = now;
       if (anim && now - (this._lastMedia ?? 0) > 38) { this.view.tickMedia(); this._lastMedia = now; }
       const dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -483,7 +573,7 @@ export class PovWindow extends ApplicationV2 {
       }
       sizeCanvas(this.canvasEl, this.stage, this.quality(this._moving));
       this.view.render();
-      if (this.live) this.broadcastLive();
+      if (this.live && !this.playing) this.broadcastLive();
       if (k.size || anim || this.view.isMoving()) this._raf = requestAnimationFrame(tick);
     };
     this._raf = requestAnimationFrame(tick);
@@ -553,6 +643,7 @@ export class PovWindow extends ApplicationV2 {
   }
 
   async close(options) {
+    this.stopRecord(); this.playing = null;
     if (this.live) emit({t: "live-end", from: game.user.id});
     this.live = false;
     for (const [h, id] of this.hooks) Hooks.off(h, id);
@@ -603,6 +694,13 @@ export class PovViewer extends ApplicationV2 {
       await app.startLive(msg);
       app._starting = false;
     }
+    app.applyLive(app.lastLive);
+  }
+
+  /** the GM plays a cutscene: fly the same path here, in step */
+  static onCutscene(msg) {
+    const app = this.instance; if (!app?.view?.world || app.mode !== "live" || app.liveScene !== msg.sceneId) return;
+    app.cut = {keys: msg.keys, dur: msg.duration || 8, t0: performance.now()};
     app.applyLive(app.lastLive);
   }
 
@@ -657,8 +755,7 @@ export class PovViewer extends ApplicationV2 {
 
   applyLive(msg) {
     if (!this.view?.world || !msg) return;
-    Object.assign(this.view.cam, foundry.utils.deepClone(msg.cam));
-    this.view.selfId = msg.selfId;
+    if (!this.cut) { Object.assign(this.view.cam, foundry.utils.deepClone(msg.cam)); this.view.selfId = msg.selfId; }
     const sc = game.scenes.get(this.liveScene); if (sc) Object.assign(this.view.opts, lookOf(sc));   // the GM may change the mood mid-way
     if (this._raf || this._tmo) return;
     const frame = now => {
@@ -669,10 +766,17 @@ export class PovViewer extends ApplicationV2 {
       const anim = on && !this.minimized && this.view.isAnimated();
       if (anim !== this._playing) { this._playing = anim; this.view.play(anim); }
       if (anim) this.view.tickMedia();
+      let cutOn = false;
+      if (this.cut) {   // a cutscene from the GM
+        const u = Math.min(1, (now - this.cut.t0) / 1000 / this.cut.dur);
+        this.view.setFreeCam(camAt(this.cut.keys, u)); cutOn = u < 1;
+        if (!cutOn) { this.cut = null; if (this.lastLive) { Object.assign(this.view.cam, foundry.utils.deepClone(this.lastLive.cam)); this.view.selfId = this.lastLive.selfId; } }
+      }
       sizeCanvas(this.canvasEl, this.stage, Math.min(0.75, Number(setting("quality")) || 0.75));
       this.view.render({forPlayers: true});
       const t = this.element?.querySelector(".window-title"); if (t) t.textContent = this.title;
-      if (anim) this._tmo = setTimeout(() => { this._tmo = null; this._raf = requestAnimationFrame(frame); }, 30);   // ~30 fps while something animates
+      if (cutOn) this._raf = requestAnimationFrame(frame);
+      else if (anim) this._tmo = setTimeout(() => { this._tmo = null; this._raf = requestAnimationFrame(frame); }, 30);   // ~30 fps while something animates
     };
     this._raf = requestAnimationFrame(frame);
   }

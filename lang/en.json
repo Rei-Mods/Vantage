@@ -155,7 +155,8 @@
       "Hidden": "(hidden)",
       "TokensView": "{name}'s view",
       "TimeTitle": "Time of day: drag from noon to night. Sets the scene's darkness and the Day cycle lighting mood.",
-      "WeatherTitle": "Weather in 3D (saved with the scene)"
+      "WeatherTitle": "Weather in 3D (saved with the scene)",
+      "FilmTitle": "Cutscenes and clips: camera points, play, record a video"
     },
     "Notify": {
       "NoScene": "Vantage: no scene is open.",
@@ -168,7 +169,9 @@
       "NotYours": "Vantage: you can only move your own tokens.",
       "Blocked": "Vantage: a wall is in the way.",
       "Locked": "Vantage: that door is locked.",
-      "TargetScene": "Vantage: targeting works on the scene that is open on the map."
+      "TargetScene": "Vantage: targeting works on the scene that is open on the map.",
+      "NeedPoints": "Vantage: add at least 2 camera points first (move the camera, click Add point, move, Add point...).",
+      "Recorded": "Vantage: saved {name}."
     },
     "Scene": {
       "Legend": "Vantage (3D view)",
@@ -296,6 +299,18 @@
       "half": "half cover (+2 AC)",
       "three": "three-quarters cover (+5 AC)",
       "full": "full cover (can't be targeted)"
+    },
+    "Film": {
+      "Title": "Cutscene",
+      "Points": "({n} camera points)",
+      "Add": "Add point",
+      "AddTitle": "Add where the camera is now as the next point of the path (saved with the scene)",
+      "ClearTitle": "Remove all points",
+      "Play": "Play",
+      "PlayTitle": "Fly the camera along the points (players in Live see it too)",
+      "Record": "Record",
+      "RecordTitle": "Record a video of the window (with 2+ points: records the cutscene; without: until you click again)",
+      "Seconds": "Length (s)"
     }
   }
 }

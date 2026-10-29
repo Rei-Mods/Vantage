@@ -173,6 +173,11 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 - **Lights follow their Foundry animation**: torches and flames flicker, pulses breathe, sirens sweep, chroma and rainbow lights cycle colour, fog and ghost lights drift.
 - About 30 frames a second while anything moves, never while the window is minimized. Turn it off per computer with *Animate the 3D view*.
 
+### Cutscenes and clips
+- **Camera points**: open the film panel in the window, move the camera, click **Add point**, move, add another... The points are saved with the scene.
+- **Play** flies the camera smoothly through them; players in **Live** watch the same flight, in step, on their own screens.
+- **Record** saves a video of the window (MP4 where the browser can, otherwise WebM). With 2 or more points it records the cutscene; without, it records until you click again. Players can record their own view too.
+
 ### Show your players
 - **Show Players** sends the current picture to everyone, and also works on phones. Hidden tokens are never in it.
 - **Live** makes your players' screens follow your camera while you move it. Phones get a fresh picture whenever you stop moving.
