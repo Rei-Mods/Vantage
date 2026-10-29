@@ -25,7 +25,10 @@ uniform vec4 uLPos[${MAX_LIGHTS}], uLCol[${MAX_LIGHTS}];
 uniform int uWx; uniform vec3 uWxVel, uWxCol, uWxMistCol; uniform vec4 uWxP, uWxQ; uniform float uWxFlash, uWxMist, uWxGround, uWxTop;
 uniform sampler2D uShelter;
 uniform sampler2D uSlab; uniform float uSlabOn;   // overhangs (bridges, roofs, ceilings): a floating slab per point, bottom..top (ft)
-uniform sampler2D uCeil; uniform float uCeilH[8]; uniform int uCeilN; uniform float uCeilSun;   // uCeilSun: the camera is under a ceiling's height (so ceilings keep the sun out)   // rooms' ceilings: per point R = which height (1..8, 0 none), G = the slab here is a room's ceiling; heights (ft)
+uniform sampler2D uCeil; uniform vec4 uCeilP[16]; uniform int uCeilN, uRoofMat; uniform float uCeilSun, uRoofTop;
+// rooms' ceilings and roofs: per point R = which plane (1..16, 0 = open sky), G = the slab here is a room's ceiling (1) or the
+// wall over a door (0.5), B = a region's roof covering (+1, 0 = the scene's: uRoofMat, -1 = suit the walls); plane i: height (px) = x + y * px + z * pz. uCeilSun: the camera is under a ceiling (ceilings keep
+// the sun out); uRoofTop: roofs show from above too (a token's eye view)
 uniform vec4 uHover, uHoverCol;
 uniform sampler2D uPropData, uPropInfo, uPropPic;
 uniform sampler2D uVis; uniform float uVisOn;      // a player's sight: R = in sight now, G = explored before
@@ -59,21 +62,24 @@ vec2 slabAt(vec2 xz){
 }
 bool inSlab(vec3 p, float t){ vec2 s = slabAt(p.xz); return s.y > s.x && p.y > s.x && p.y < min(s.y, cutLim(p.xz, t)); }
 bool solidAt(vec3 p, float t){ return p.y < hCut(p, t) || inSlab(p, t); }
-// a room's ceiling: flat, seen only from below; how far along the ray the first one is (1e12 = none)
-float ceilHit(vec3 o, vec3 d, bool cam){
-  float best = 1e12;
-  if (d.y < 1e-4) return best;
-  for (int i = 0; i < 8; i++) {
+// a room's ceiling (flat or sloped), seen from below; and, in a token's eye view, its roof from above. How far along the
+// ray the first one is (1e12 = none) and which plane it is
+float ceilHit(vec3 o, vec3 d, bool cam, out int which){
+  float best = 1e12; which = -1;
+  for (int i = 0; i < 16; i++) {
     if (i >= uCeilN) break;
-    float h = uCeilH[i] * uPpf;
-    if (o.y > h - 0.05 * uPpf) continue;
-    float tc = (h - o.y) / d.y;
-    if (tc >= best) continue;
+    vec4 P = uCeilP[i];
+    float num = P.x + P.y * o.x + P.z * o.z - o.y, den = d.y - P.y * d.x - P.z * d.z;   // num > 0: the origin is under it
+    if (num > 0.05 * uPpf) { if (den < 1e-5) continue; }
+    else if (cam && uRoofTop > 0.5 && num < -0.05 * uPpf) { if (den > -1e-5) continue; }
+    else continue;
+    float tc = num / den;
+    if (tc <= 0.0 || tc >= best) continue;
     vec2 xz = o.xz + d.xz * tc;
     if (xz.x < 0.0 || xz.y < 0.0 || xz.x >= uWorld.x || xz.y >= uWorld.y) continue;
     if (int(texelFetch(uCeil, ivec2(xz / uWorld * uHRes), 0).r * 255.0 + 0.5) != i + 1) continue;
-    if (cam && cutLim(xz, tc) < h) continue;
-    best = tc;
+    if (cam && cutLim(xz, tc) < o.y + d.y * tc) continue;
+    best = tc; which = i;
   }
   return best;
 }
@@ -193,7 +199,7 @@ float mistAmt(vec3 o, vec3 d, float tOcc){
 
 // sun / moon shadow: march toward the sun over the max-height pyramid, on coarser cells as the steps grow
 float sunShadow(vec3 p){
-  if (uCeilSun > 0.5 && ceilHit(p, uSunDir, false) < 1e11) return 0.0;   // indoors, seen from inside: the ceiling keeps the sun out (overviews stay a doll's house)
+  int cw; if (uCeilSun > 0.5 && ceilHit(p, uSunDir, false, cw) < 1e11) return 0.0;   // indoors, seen from inside: the ceiling keeps the sun out (overviews stay a doll's house)
   if (uSunShadow < 0.5) return 1.0;
   vec3 d = uSunDir; if (d.y < 0.02) return 1.0;
   float texel = uWorld.x / uHRes.x, res = 1.0;
@@ -229,9 +235,31 @@ vec3 woodCol(float u, float y, float px, float plank){
   c *= 1.0 + 0.10 * sin((f * 9.0 + vnoise(vec2(pl * 5.3, y * 0.7)) * 5.0) * 6.2831) * dtl(plank * 0.15, px);
   return c * mix(1.0, 0.35, sstep(0.05, 0.02, min(f, 1.0 - f) * plank) * dtl(0.08, px));
 }
+vec3 gEmit;   // the self-lit part of the last wall skin / raised-area face drawn (screens, LEDs, neon): added after the light
+vec3 hue3(float h){ return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0); }
+// hexagonal cells s ft across: (ft to the cell's edge, a hash of the cell); gHex = the point from the cell's middle
+vec2 gHex;
+vec2 hexCell(vec2 p, float s){
+  p /= s;
+  vec2 r = vec2(1.0, 1.7320508), h = r * 0.5;
+  vec2 a = mod(p, r) - h, b = mod(p - h, r) - h;
+  vec2 g = dot(a, a) < dot(b, b) ? a : b, ag = abs(g);
+  gHex = g;
+  return vec2((0.5 - max(dot(ag, vec2(0.5, 0.8660254)), ag.x)) * s, hash(floor((p - g) * 2.0 + 0.5)));
+}
+// a seven-segment digit n in a box (f: 0..1 across and up): 1 on a lit segment
+float seg7(vec2 f, int n){
+  f = (f - vec2(0.15, 0.08)) / vec2(0.7, 0.84);
+  if (f.x < 0.0 || f.x > 1.0 || f.y < 0.0 || f.y > 1.0) return 0.0;
+  int m = n == 0 ? 0x3F : n == 1 ? 0x06 : n == 2 ? 0x5B : n == 3 ? 0x4F : n == 4 ? 0x66 : n == 5 ? 0x6D : n == 6 ? 0x7D : n == 7 ? 0x07 : n == 8 ? 0x7F : 0x6F;
+  float t = 0.16; bool up = f.y > 0.5, vl = f.x < t, vr = f.x > 1.0 - t;
+  bool on = ((m & 1) != 0 && f.y > 1.0 - t) || ((m & 2) != 0 && vr && up) || ((m & 4) != 0 && vr && !up) || ((m & 8) != 0 && f.y < t)
+         || ((m & 16) != 0 && vl && !up) || ((m & 32) != 0 && vl && up) || ((m & 64) != 0 && abs(f.y - 0.5) < t * 0.5);
+  return on ? 1.0 : 0.0;
+}
 vec3 hazard(float u, float foot){ return mod(u + foot, 1.0) < 0.5 ? vec3(0.78, 0.60, 0.10) : vec3(0.07); }
 vec3 wallSkin(int sk, float u, float y, float dt, float foot, vec2 uv, vec2 xz, vec2 n2, bool door, float px){
-  vec3 c;
+  vec3 c; gEmit = vec3(0.0);
   if (sk == 1) {            // concrete: poured panels, form-tie holes, rain streaks
     c = vec3(0.47, 0.47, 0.45) * (0.84 + 0.28 * fbm(vec2(u, y) * 0.55)) * (0.92 + 0.08 * vnoise(vec2(u * 3.0, y * 0.22)));
     c *= 1.0 - 0.28 * sstep(0.05, 0.02, blocks(u, y, 4.0, 2.0, 0.0).z) * dtl(0.1, px);
@@ -299,6 +327,295 @@ vec3 wallSkin(int sk, float u, float y, float dt, float foot, vec2 uv, vec2 xz, 
     c *= mix(1.0, 0.74, sstep(0.05, 0.015, blocks(u, y, 3.0, 1.5, 0.5).z) * dtl(0.12, px));
     c *= mix(0.82, 1.0, smoothstep(0.0, 2.0, foot));
     if (door) c = woodCol(u, y, px, 0.6) * 0.9;
+  } else if (sk == 13) {    // glass curtain wall: tinted panes in slim mullions, the sky in them, a few lit from inside
+    vec3 b = blocks(u, y, 5.0, 4.0, 0.0);
+    c = mix(vec3(0.06, 0.10, 0.14), vec3(0.24, 0.34, 0.42), clamp(foot / 24.0 + 0.35 * vnoise(vec2(u * 0.05, y * 0.02)) + 0.06 * hash(b.xy + 2.0), 0.0, 1.0));   // the sky, across the whole face
+    c += vec3(0.10, 0.12, 0.14) * sstep(0.12, 0.0, abs(fract((u * 0.6 + y) * 0.05) - 0.5)) * dtl(0.5, px);   // a streak of reflection
+    if (hash(b.xy + 9.1) > 0.9) gEmit = vec3(1.0, 0.82, 0.55) * 0.14;   // a few lit from inside
+    float mul = sstep(0.12, 0.06, b.z) * dtl(0.15, px);
+    c = mix(c, vec3(0.52, 0.55, 0.58), mul); gEmit *= 1.0 - mul;
+    if (door) { c = vec3(0.08, 0.12, 0.15); gEmit = vec3(0.0); if (abs(mod(u, 3.0) - 1.5) > 1.38 || abs(foot - 3.4) < 0.08) c = vec3(0.62, 0.64, 0.66); }
+  } else if (sk == 14) {    // tiles: white subway tile over a dark green dado, grey grout
+    bool lo = foot < 3.5;
+    vec3 b = blocks(u, y, lo ? 0.5 : 0.6, lo ? 0.5 : 0.3, lo ? 0.0 : 0.5);
+    vec3 t = (lo ? vec3(0.10, 0.30, 0.24) : vec3(0.86, 0.87, 0.84)) * (0.93 + 0.1 * hash(b.xy + 5.5));
+    c = mix(mix(t, vec3(0.5), 0.15), mix(t, vec3(0.48, 0.48, 0.46), sstep(0.03, 0.012, b.z)), dtl(0.06, px));
+    if (abs(foot - 3.55) < 0.08) c = vec3(0.07, 0.20, 0.16);   // the cap row
+    if (door) c = vec3(0.32, 0.36, 0.38) * (0.9 + 0.1 * vnoise(vec2(u, y) * 3.0));
+  } else if (sk == 15) {    // graffiti: concrete under layers of pieces and tags, the paint a little fluorescent
+    c = vec3(0.40, 0.40, 0.39) * (0.82 + 0.28 * fbm(vec2(u, y) * 0.6));
+    vec2 q = vec2(u, foot) * 0.35;
+    float n = fbm(q + vec2(0.0, 3.0)), k = fbm(q * 1.7 + 11.0), low = sstep(9.0, 6.0, foot);
+    float paint = sstep(0.52, 0.58, n) * low;
+    vec3 pc = hue3(floor(fbm(q * 0.3 + 5.0) * 6.0) / 6.0 + 0.05);
+    c = mix(c, pc * 0.8, paint);
+    c = mix(c, vec3(0.03), sstep(0.025, 0.0, abs(n - 0.52)) * low * dtl(0.15, px));                   // outlines
+    c = mix(c, vec3(0.02), sstep(0.02, 0.0, abs(k - 0.55)) * sstep(6.5, 5.0, foot) * dtl(0.12, px));  // tags
+    gEmit = pc * paint * 0.08;
+    if (door) { c = vec3(0.30, 0.31, 0.33) * (0.85 + 0.2 * vnoise(vec2(u, y) * 2.0)); gEmit = vec3(0.0); if (abs(mod(y, 0.5) - 0.25) > 0.22) c *= 0.75; }   // a roller shutter
+  } else if (sk == 16) {    // cinder blocks: painted grey, deep joints, a scuffed foot
+    vec3 b = blocks(u, y, 1.33, 0.67, 0.5);
+    c = vec3(0.55, 0.56, 0.55) * (0.88 + 0.12 * hash(b.xy + 3.3)) * (0.9 + 0.14 * vnoise(vec2(u, y) * 9.0));
+    c *= mix(1.0, 0.55, sstep(0.04, 0.015, b.z) * dtl(0.08, px));
+    c *= mix(0.75, 1.0, smoothstep(0.0, 1.2, foot));
+    if (door) { c = vec3(0.42, 0.20, 0.14) * (0.9 + 0.15 * vnoise(vec2(u, y) * 2.0)); if (abs(foot - 3.3) < 0.1) c = vec3(0.7); }
+  } else if (sk == 17) {    // wallpaper: a damask pattern over wood panelling, a chair rail and a moulding at the top
+    vec2 q = vec2(u / 1.2, y / 1.6), f = fract(q) - 0.5;
+    float m = length(vec2(f.x * 1.6, f.y)) - 0.28 - 0.08 * sin(atan(f.y, f.x) * 4.0);
+    c = mix(vec3(0.13, 0.27, 0.27), vec3(0.55, 0.47, 0.26), sstep(0.04, 0.0, abs(m) - 0.03) * dtl(0.15, px) * 0.85) * (0.9 + 0.1 * vnoise(vec2(u, y) * 2.0));
+    if (foot < 3.0) { c = woodCol(u, y, px, 1.5) * 0.95; if (abs(mod(u, 3.0) - 1.5) > 1.3 || abs(foot - 1.5) > 1.2) c *= 0.7; }   // wainscot panels
+    if (abs(foot - 3.05) < 0.1 || dt < 0.35) c = vec3(0.82, 0.79, 0.72) * (dt < 0.35 && dt > 0.25 ? 0.7 : 1.0);
+    if (door) { c = woodCol(u, y, px, 0.5) * 0.9; if (abs(mod(u, 1.5) - 0.75) > 0.6 || abs(mod(foot, 3.4) - 1.7) > 1.5) c *= 0.65; }
+  } else if (sk == 18) {    // starship panels: pale insets in a darker frame, small status lights, a dark kick strip
+    vec3 b = blocks(u, foot, 3.0, 2.5, 0.0);
+    float k = dtl(0.1, px);
+    c = vec3(0.70, 0.73, 0.76) * (0.94 + 0.06 * hash(b.xy + 1.7));
+    c *= mix(1.0, 0.55, sstep(0.14, 0.10, b.z) * k);
+    c *= mix(1.0, 0.86, sstep(0.14, 0.18, b.z) * sstep(0.30, 0.26, b.z) * k);
+    if (foot < 0.6) c = vec3(0.12, 0.13, 0.15);
+    vec2 f = vec2(fract(u / 3.0) * 3.0, fract(foot / 2.5) * 2.5);
+    if (length(f - vec2(2.6, 2.2)) < 0.07 && hash(b.xy) > 0.5) { c = vec3(0.1); gEmit = hash(b.xy + 2.0) > 0.7 ? vec3(1.0, 0.45, 0.1) : vec3(0.2, 0.7, 1.0); }
+    if (dt > 0.3 && dt < 0.45) gEmit = vec3(0.6, 0.85, 1.0) * 0.35;   // a light strip under the ceiling
+    if (door) { c = vec3(0.45, 0.48, 0.52); gEmit = vec3(0.0); if (abs(fract(u / 4.0) - 0.5) < 0.012) c *= 0.3; if (foot < 0.6) c = hazard(u, foot); }
+  } else if (sk == 19) {    // plywood: boarded-up sheets, nail lines, spray-painted marks
+    vec3 b = blocks(u, foot, 4.0, 8.0, 0.0);
+    float hs = hash(b.xy + 6.2);
+    c = vec3(0.62, 0.48, 0.30) * (0.8 + 0.25 * hs) * (0.88 + 0.16 * fbm(vec2(u * 0.4, y * 2.5) + hs * 9.0));
+    c *= mix(1.0, 0.4, sstep(0.05, 0.02, b.z) * dtl(0.1, px));
+    vec2 f = vec2(fract(u / 4.0) * 4.0, fract(foot / 8.0) * 8.0);
+    if (hs > 0.6 && f.y > 0.5 && min(abs(f.x * 2.0 - f.y), abs((4.0 - f.x) * 2.0 - f.y)) < 0.35) c = mix(c, hs > 0.85 ? vec3(0.6, 0.06, 0.05) : vec3(0.05), 0.85);   // a big X
+    if (door) c *= 0.75;
+  } else if (sk == 20) {    // neon alley: soot-dark brick with neon tubes along it
+    vec3 b = blocks(u, y, 1.0, 0.4, 0.5);
+    c = mix(vec3(0.16, 0.08, 0.08), vec3(0.26, 0.14, 0.12), hash(b.xy + 0.9)) * (0.8 + 0.3 * vnoise(vec2(u, y) * 5.0));
+    c = mix(c, vec3(0.07), sstep(0.045, 0.02, b.z) * dtl(0.12, px));
+    float hs = hash(vec2(floor(u / 12.0), 4.4)), tu = fract(u / 12.0) * 12.0, th = 7.0 + 2.0 * hs;
+    vec3 nc = hs < 0.33 ? vec3(1.0, 0.15, 0.6) : hs < 0.66 ? vec3(0.1, 0.9, 1.0) : vec3(0.7, 0.3, 1.0);
+    float dd = min(abs(foot - th) + (tu > 10.5 ? 99.0 : 0.0), abs(tu - 1.0 - hs * 8.0) + (foot < th - 3.0 || foot > th ? 99.0 : 0.0));
+    if (dd < 0.07) { c = nc * 0.5; gEmit = nc * 1.2; } else gEmit = nc * 0.25 * sstep(0.7, 0.07, dd);   // the tube and its glow on the brick
+    if (door) { c = vec3(0.10, 0.10, 0.12) * (0.9 + 0.2 * vnoise(vec2(u, y) * 3.0)); gEmit = vec3(0.0); if (abs(mod(y, 0.5) - 0.25) > 0.22) c *= 0.6; }
+  } else if (sk == 21) {    // padded and tufted: dark leather in diamonds, buttons at the corners (lounges, clubs, cells)
+    vec2 q = vec2(u + foot, foot - u) / 1.1, f = fract(q) - 0.5;
+    float r = max(abs(f.x), abs(f.y));
+    c = vec3(0.17, 0.07, 0.14) * (0.65 + 0.5 * (1.0 - r * 1.6)) * (0.92 + 0.1 * vnoise(vec2(u, y) * 4.0));
+    if (length(abs(f) - 0.5) < 0.09) c = mix(c, vec3(0.05), dtl(0.1, px));
+    if (foot < 0.4) c = vec3(0.55, 0.56, 0.58);   // a chrome skirting
+    if (door) c *= 0.8;
+  } else if (sk == 22) {    // LED video wall: a still, colourful picture in a fine grid of pixels, black bezels between screens
+    vec3 b = blocks(u, foot, 6.0, 3.5, 0.0);
+    vec2 q = vec2(u, foot);
+    vec3 img = hue3(fbm(q * 0.05 + 3.0) * 1.2 + q.x * 0.01) * (0.35 + 0.65 * smoothstep(0.3, 0.7, fbm(q * 0.12 + 1.0)));
+    float grid = mix(1.0, 0.45 + 0.55 * step(0.25, fract(u * 8.0)) * step(0.25, fract(foot * 8.0)), dtl(0.125, px));
+    c = vec3(0.02); gEmit = img * grid * 0.9;
+    if (b.z < 0.05 || foot < 0.5 || dt < 0.3) { c = vec3(0.03); gEmit = vec3(0.0); }
+    if (door) { c = vec3(0.06, 0.06, 0.07); gEmit = vec3(0.0); if (abs(fract(u / 4.0) - 0.5) < 0.04) c = vec3(0.2); }
+  } else if (sk == 23) {    // clinic: wipe-clean pale walls, a coloured stripe, a handrail
+    c = (foot < 3.0 ? vec3(0.55, 0.70, 0.72) : vec3(0.80, 0.84, 0.82)) * (0.95 + 0.05 * vnoise(vec2(u, y) * 2.0));
+    if (abs(foot - 3.0) < 0.18) c = vec3(0.12, 0.45, 0.55);
+    if (abs(foot - 3.35) < 0.08) c = vec3(0.85, 0.86, 0.88) * (abs(foot - 3.35) < 0.03 ? 1.1 : 0.75);
+    if (foot < 0.35) c = vec3(0.25, 0.28, 0.30);
+    if (door) { c = vec3(0.62, 0.70, 0.76); float fx = fract(u / 4.0) * 4.0; if (fx > 2.6 && fx < 3.2 && foot > 4.2 && foot < 6.0) c = vec3(0.10, 0.15, 0.18); if (foot < 1.0) c = vec3(0.7); }
+  } else if (sk == 24) {    // shipping containers: ribbed steel in 8 ft boxes, each its own colour, scraped and rusty
+    float hs = hash(vec2(floor(u / 8.0), floor(foot / 8.5)) + 2.6), f = fract(u / 0.9);
+    c = hs < 0.25 ? vec3(0.50, 0.12, 0.08) : hs < 0.5 ? vec3(0.10, 0.25, 0.45) : hs < 0.7 ? vec3(0.12, 0.35, 0.20) : hs < 0.85 ? vec3(0.65, 0.35, 0.08) : vec3(0.55, 0.55, 0.52);
+    c *= mix(1.0, 0.75 + 0.35 * smoothstep(0.2, 0.3, f) * (1.0 - smoothstep(0.7, 0.8, f)), dtl(0.3, px));
+    c = mix(c, vec3(0.35, 0.17, 0.07), smoothstep(0.65, 0.85, fbm(vec2(u, y) * 0.8)) * 0.6);
+    float cu = fract(u / 8.0) * 8.0, cf = fract(foot / 8.5) * 8.5;
+    if (cu < 0.25 || cu > 7.75 || cf < 0.3) c *= 0.5;   // the corner posts and rails
+    if (hs > 0.5 && cu > 1.0 && cu < 3.5 && cf > 6.0 && cf < 7.0) c = vec3(0.85) * step(0.45, hash(floor(vec2(u * 4.0, foot * 3.0))));   // stencilled numbers
+    if (door) { c *= 0.9; if (abs(mod(u, 2.0) - 1.0) < 0.06) c = vec3(0.55); }   // locking bars
+  } else if (sk == 25) {    // chrome: polished panels mirroring the room - bright above a horizon at eye height, dark below
+    vec3 b = blocks(u, foot, 4.0, 4.0, 0.0);
+    float hz = foot - 5.0 - 0.8 * (hash(b.xy + 8.0) - 0.5) - 0.3 * vnoise(vec2(u * 0.3, 1.0));
+    vec3 hi = mix(vec3(0.80, 0.84, 0.90), uTrim, 0.12) * (0.75 + 0.25 * clamp(1.0 - hz / 6.0, 0.0, 1.0));
+    c = mix(vec3(0.10, 0.10, 0.12) + vec3(0.12) * clamp(-hz / 5.0, 0.0, 1.0), hi, smoothstep(-0.15, 0.15, hz));
+    c += vec3(0.35) * sstep(0.25, 0.0, abs(fract(u / 4.0 + foot * 0.03) - 0.3)) * dtl(0.3, px);   // a streak of light
+    c *= mix(1.0, 0.3, sstep(0.05, 0.02, b.z) * dtl(0.1, px));
+    if (door) { c *= 0.8; if (abs(fract(u / 4.0) - 0.5) < 0.012) c = vec3(0.05); }
+  } else if (sk == 26) {    // carbon fibre: a fine twill weave in dark panels, a red line along them
+    vec2 q = vec2(u, y) * 6.0;
+    float o = mod(floor(q.x) + floor(q.y), 2.0);
+    float sh = o < 1.0 ? sin(fract(q.x) * 3.1416) : sin(fract(q.y) * 3.1416) * 0.6;
+    c = vec3(0.05, 0.055, 0.06) + vec3(0.07) * mix(0.4, sh, dtl(0.17, px));
+    c *= mix(1.0, 0.4, sstep(0.04, 0.02, blocks(u, foot, 5.0, 4.0, 0.0).z) * dtl(0.1, px));
+    if (door) c *= 1.25;
+    if (abs(foot - 3.6) < 0.05) c = vec3(0.7, 0.05, 0.05);
+  } else if (sk == 27) {    // holo wall: dark glass with a projected grid, scan lines and floating panels
+    c = vec3(0.02, 0.03, 0.05);
+    vec2 q = vec2(u, foot), dg = (0.5 - abs(fract(q / 2.0) - 0.5)) * 2.0;
+    vec3 cy = mix(vec3(0.1, 0.9, 1.0), uTrim, 0.35);
+    gEmit = cy * (sstep(0.05, 0.0, min(dg.x, dg.y)) * dtl(0.1, px) * 0.6 + 0.06 + 0.04 * step(0.5, fract(foot * 6.0)) * dtl(0.17, px));
+    float hs = hash(floor(vec2(u / 6.0, foot / 3.0)) + 3.1);
+    vec2 f = vec2(fract(u / 6.0) * 6.0, fract(foot / 3.0) * 3.0);
+    if (hs > 0.6 && foot > 3.0 && f.x > 1.0 && f.x < 5.0 && f.y > 0.6 && f.y < 2.4) {   // a floating panel with lines of text
+      float row = floor(f.y * 6.0), txt = step(fract(f.y * 6.0), 0.5) * step(f.x - 1.2, 0.4 + 3.2 * hash(vec2(row, hs))) * step(0.3, hash(floor(vec2(u * 8.0, row)))) * step(1.2, f.x);
+      gEmit += cy * (0.12 + 0.5 * txt * dtl(0.08, px));
+    }
+    if (door) gEmit = cy * 0.25 * (0.6 + 0.4 * step(0.5, fract(foot * 3.0)));
+  } else if (sk == 28) {    // pipes: a dark plant wall with pipes and conduits along it, flanges every few feet
+    c = vec3(0.16, 0.17, 0.17) * (0.85 + 0.25 * fbm(vec2(u, y) * 0.5));
+    for (int i = 0; i < 4; i++) {
+      float ph = i == 0 ? 1.2 : i == 1 ? 2.6 : i == 2 ? 5.5 : 7.2, pr = i == 0 ? 0.35 : i == 1 ? 0.2 : i == 2 ? 0.45 : 0.15;
+      float dd = abs(foot - ph) / pr;
+      if (dd < 1.0) {
+        c = (i == 0 ? vec3(0.45, 0.30, 0.15) : i == 1 ? vec3(0.55, 0.45, 0.10) : i == 2 ? vec3(0.40, 0.42, 0.44) : vec3(0.15, 0.30, 0.45)) * (0.35 + 0.75 * sqrt(1.0 - dd * dd));
+        if (abs(mod(u + float(i) * 1.7, 6.0) - 3.0) > 2.85) c *= 1.25;
+      }
+    }
+    if (door) { c = vec3(0.25, 0.27, 0.27); if (abs(foot - 3.5) < 0.35 && abs(mod(u, 4.0) - 2.0) < 0.35) c = vec3(0.6, 0.15, 0.1); if (foot < 0.5) c = hazard(u, foot); }
+  } else if (sk == 29) {    // rusted plate: welded sheets eaten through with rust, streaks running down
+    vec3 b = blocks(u, y, 6.0, 4.0, 0.33);
+    float n = fbm(vec2(u, y) * 0.45 + b.xy);
+    c = mix(vec3(0.30, 0.30, 0.29), vec3(0.42, 0.20, 0.08), smoothstep(0.35, 0.65, n));
+    c = mix(c, vec3(0.20, 0.08, 0.03), smoothstep(0.68, 0.8, n));
+    c *= (0.85 + 0.25 * vnoise(vec2(u * 4.0, y * 0.25))) * mix(1.0, 0.45, sstep(0.05, 0.02, b.z) * dtl(0.1, px));
+    if (door) { c *= 0.8; if (abs(mod(foot, 2.0) - 1.0) > 0.9) c *= 0.6; }
+  } else if (sk == 30) {    // biotech: grown, ribbed walls with glowing veins (alien hives, bio labs)
+    vec2 q = vec2(u, y);
+    float rib = 0.5 + 0.5 * sin(u * 2.2 + 1.5 * sin(y * 0.6 + u * 0.3));
+    c = mix(vec3(0.10, 0.05, 0.10), vec3(0.28, 0.20, 0.24), rib) * (0.75 + 0.4 * fbm(q * 0.9));
+    float vein = sstep(0.03, 0.0, abs(fbm(q * 0.4 + 2.0) - 0.5)) * dtl(0.12, px);
+    gEmit = vec3(0.25, 1.0, 0.55) * vein * 0.7;
+    c = mix(c, vec3(0.1, 0.3, 0.15), vein) + vec3(0.08) * pow(rib, 8.0) * dtl(0.2, px);   // and a wet sheen
+    if (door) { c = vec3(0.18, 0.10, 0.16) * (0.7 + 0.4 * vnoise(q * 3.0)); gEmit = vec3(0.25, 1.0, 0.55) * 0.5 * sstep(0.2, 0.0, abs(fract(u / 4.0) - 0.5) * 4.0); }
+  } else if (sk == 31) {    // hex plating: hexagonal armour plates, faintly lit seams, a few glowing cells
+    vec2 hx = hexCell(vec2(u, y), 1.6);
+    float sm = sstep(0.06, 0.02, hx.x) * dtl(0.1, px);
+    c = vec3(0.22, 0.24, 0.27) * (0.85 + 0.25 * hx.y) * (1.0 - 0.6 * sm) * (1.0 + 0.12 * sstep(0.1, 0.16, hx.x) * sstep(0.26, 0.2, hx.x));
+    gEmit = uTrim * 0.12 * sm + (hx.y > 0.9 ? mix(vec3(1.0, 0.6, 0.15), uTrim, 0.3) * 0.3 * sstep(0.08, 0.2, hx.x) : vec3(0.0));
+    if (door) { c = vec3(0.15, 0.16, 0.18); gEmit = uTrim * 0.25 * sm; }
+  } else if (sk == 32) {    // arcane: dark dressed stone with carved runes and circles that glow
+    vec3 b = blocks(u, y, 2.0, 1.0, 0.5);
+    c = mix(vec3(0.13, 0.12, 0.15), vec3(0.22, 0.20, 0.25), hash(b.xy + 7.7)) * (0.8 + 0.3 * fbm(vec2(u, y) * 1.5));
+    c *= mix(1.0, 0.5, sstep(0.04, 0.015, b.z) * dtl(0.1, px));
+    vec3 ac = mix(vec3(0.55, 0.3, 1.0), uTrim, 0.25);
+    vec2 rc = vec2(mod(u, 10.0) - 5.0, foot - 4.5);
+    float rl = length(rc), an = atan(rc.y, rc.x) * 3.0;
+    float gl = sstep(0.06, 0.02, abs(rl - 1.6)) + sstep(0.05, 0.02, abs(rl - 1.25))
+             + step(0.5, hash(vec2(floor(an), 1.0))) * sstep(0.05, 0.01, abs(rl - 1.42)) * step(abs(fract(an) - 0.5), 0.3)
+             + (abs(foot - 7.2) < 0.3 ? step(0.55, hash(floor(vec2(u * 3.0, foot * 4.0 + 0.5)))) * step(0.08, fract(u * 3.0)) : 0.0);   // a band of runes
+    gl = clamp(gl, 0.0, 1.0) * dtl(0.1, px);
+    c = mix(c, ac * 0.3, gl); gEmit = ac * gl * 1.3;
+    if (door) { c = woodCol(u, y, px, 0.6) * 0.5; gEmit = ac * 0.6 * sstep(0.05, 0.02, abs(abs(mod(u, 4.0) - 2.0) - 1.6)) * dtl(0.1, px); }
+  } else if (sk == 33) {    // shoji: paper screens in a dark wooden lattice, a little light through the paper
+    vec2 g = vec2(abs(fract(u) - 0.5), abs(fract(foot / 1.25) - 0.5));
+    vec3 paper = vec3(0.86, 0.82, 0.70) * (0.92 + 0.08 * fbm(vec2(u, y) * 3.0));
+    float bar = sstep(0.05, 0.03, min(0.5 - g.x, (0.5 - g.y) * 1.25)) * dtl(0.1, px);
+    c = mix(paper, vec3(0.20, 0.12, 0.07), bar); gEmit = paper * (1.0 - bar) * 0.12;
+    if (mod(u, 3.0) < 0.15 || foot < 0.7 || dt < 0.5 || abs(foot - 6.5) < 0.12) { c = woodCol(u, y, px, 0.5) * 0.6; gEmit = vec3(0.0); }   // the frame
+  } else if (sk == 34) {    // ruins: old, uneven blocks, moss in the cracks, a few gone
+    vec3 b = blocks(u + 0.4 * vnoise(vec2(y * 0.8, u * 0.1)), y, 1.8, 0.9, 0.37);
+    float hs = hash(b.xy + 2.2);
+    c = mix(vec3(0.36, 0.35, 0.31), vec3(0.50, 0.48, 0.42), hs) * (0.72 + 0.42 * fbm(vec2(u, y) * 1.1));
+    c *= mix(1.0, 0.4, sstep(0.07, 0.02, b.z) * dtl(0.15, px));
+    float moss = smoothstep(0.55, 0.75, fbm(vec2(u, y) * 0.5 + 4.0)) * (1.0 - smoothstep(0.0, 6.0, foot) * 0.6);
+    c = mix(c, vec3(0.16, 0.25, 0.08) * (0.7 + 0.5 * vnoise(vec2(u, y) * 6.0)), clamp(moss * (1.0 + 0.5 * sstep(0.08, 0.0, b.z)), 0.0, 1.0));
+    if (hs > 0.93) c *= 0.35;
+    if (door) c = woodCol(u, y, px, 0.7) * 0.55;
+  } else if (sk == 35) {    // dwarven: great dressed granite, a carved band of chevrons, brass inlay
+    vec3 b = blocks(u, y, 3.0, 1.5, 0.5);
+    c = mix(vec3(0.24, 0.23, 0.24), vec3(0.36, 0.34, 0.33), hash(b.xy + 5.0)) * (0.85 + 0.2 * fbm(vec2(u, y) * 2.0));
+    c *= mix(1.0, 0.45, sstep(0.035, 0.012, b.z) * dtl(0.1, px));
+    vec3 brass = vec3(0.78, 0.55, 0.22) * (0.85 + 0.3 * vnoise(vec2(u * 3.0, y)));
+    float band = abs(foot - 6.0);
+    if (band < 0.6) { c = vec3(0.20, 0.19, 0.19) * (0.9 + 0.1 * vnoise(vec2(u, y) * 4.0)); if (band > 0.5 || abs(fract(u / 1.2 + band / 1.2) - 0.5) < 0.08) c = brass; }
+    if (foot < 0.8) c *= 0.75;
+    if (dt < 0.25) c = brass * 0.85;
+    if (door) { c = vec3(0.22, 0.21, 0.21) * (0.85 + 0.2 * vnoise(vec2(u, y) * 2.0)); float fx = abs(fract(u / 4.0) - 0.5) * 4.0; if (abs(fx - 1.5) < 0.12 || abs(foot - 3.5) < 0.12 || abs(fx - foot * 0.25) < 0.08) c = brass; }
+  } else if (sk == 36) {    // elven: living wood grown into flowing ribs, pale bark, leaves and a few glowing blossoms
+    float w = u + 0.35 * sin(y * 0.45 + u * 0.2) + 0.15 * sin(y * 1.3), rib = fract(w / 1.1);
+    c = mix(vec3(0.45, 0.40, 0.32), vec3(0.70, 0.64, 0.52), smoothstep(0.0, 0.5, rib) * (1.0 - smoothstep(0.5, 1.0, rib))) * (0.85 + 0.2 * vnoise(vec2(w * 3.0, y * 0.4)));
+    c *= (0.8 + 0.3 * vnoise(vec2(w * 6.0, y * 0.35))) * mix(1.0, 0.45, sstep(0.08, 0.02, min(rib, 1.0 - rib) * 1.1) * dtl(0.1, px));   // bark, and the gaps between the stems
+    float lf = smoothstep(0.6, 0.72, fbm(vec2(u, y) * 0.7 + 9.0));
+    c = mix(c, vec3(0.20, 0.40, 0.14) * (0.7 + 0.6 * vnoise(vec2(u, y) * 5.0)), lf);
+    vec2 bq = vec2(u, y) * 1.5;
+    if (lf > 0.4 && hash(floor(bq)) > 0.85 && length(fract(bq) - 0.5) < 0.16) { c = vec3(0.85, 0.9, 1.0); gEmit = vec3(0.55, 0.8, 1.0) * 0.5 * dtl(0.1, px); }   // a blossom
+    if (door) { c = woodCol(u, y, px, 0.5) * 1.1; gEmit = vec3(0.0); float ax = abs(fract(u / 4.0) - 0.5) * 2.0; if (abs(foot - 7.0 + 2.0 * ax * ax) < 0.15) c = vec3(0.85, 0.75, 0.4); }   // a leaf-arch inlay
+  } else if (sk == 37) {    // crystal: a cave wall grown over with faceted crystals that glow from within
+    vec2 hx = hexCell(vec2(u * 0.8 + 0.3 * y, y * 0.5), 1.3);
+    vec3 cc = hx.y < 0.65 ? vec3(0.55, 0.3, 0.9) : hx.y < 0.85 ? vec3(0.2, 0.75, 0.85) : vec3(0.9, 0.35, 0.65);
+    float fa = hash(vec2(floor(atan(gHex.y, gHex.x) / 1.0472 + 3.0), hx.y * 31.0));   // which facet of the crystal: its own shade
+    float k = smoothstep(0.0, 0.4, hx.x);
+    if (hx.y < 0.4) c = vec3(0.12, 0.11, 0.13) * (0.7 + 0.5 * fbm(vec2(u, y)));
+    else { c = mix(cc * (0.18 + 0.5 * fa) * (0.6 + 0.4 * k), vec3(0.04), sstep(0.05, 0.0, hx.x) * dtl(0.1, px)); gEmit = cc * (0.08 + 0.22 * k) * (0.6 + 0.6 * fa); }
+    if (door) { c = woodCol(u, y, px, 0.7) * 0.5; gEmit = vec3(0.0); }
+  } else if (sk == 38) {    // cryo: frosted white panels, blue light in the seams, frost creeping up from the floor
+    vec3 b = blocks(u, foot, 2.5, 4.0, 0.0);
+    c = vec3(0.80, 0.86, 0.90) * (0.93 + 0.07 * hash(b.xy + 4.2)) * (0.9 + 0.12 * fbm(vec2(u, y) * 1.5));
+    float sm = sstep(0.12, 0.06, b.z) * mix(0.35, 1.0, dtl(0.12, px));
+    c = mix(c, vec3(0.35, 0.55, 0.7), sm); gEmit = vec3(0.3, 0.7, 1.0) * 0.6 * sm;
+    c = mix(c, vec3(0.95, 0.98, 1.0), sstep(2.0, 0.0, foot) * smoothstep(0.4, 0.7, fbm(vec2(u, y) * 2.0)) * 0.8);
+    if (door) { c = vec3(0.6, 0.66, 0.7); gEmit = vec3(0.0); if (abs(fract(u / 4.0) - 0.5) < 0.012 || abs(foot - 3.5) < 0.05) { c = vec3(0.2, 0.5, 0.7); gEmit = vec3(0.3, 0.7, 1.0) * 0.5; } }
+  } else if (sk == 39) {    // server racks: black cabinets full of units, rows of status LEDs
+    float ru = fract(u / 2.0) * 2.0, unit = floor(foot / 0.15), k = dtl(0.06, px);
+    c = vec3(0.04, 0.045, 0.05);
+    if (ru > 0.15 && ru < 1.85 && foot > 0.5 && foot < 7.0) {
+      c = vec3(0.09, 0.095, 0.10) * (0.8 + 0.3 * hash(vec2(floor(u / 2.0), unit)));
+      if (fract(foot / 0.15) < 0.12) c *= 0.4;
+      float led = hash(vec2(floor(u * 6.0), unit) + 1.3);
+      gEmit = vec3(0.03, 0.08, 0.05) * (1.0 - k);   // far away: the LEDs blur to a faint glow
+      if (led > 0.75 && fract(u * 6.0) < 0.35 && abs(fract(foot / 0.15) - 0.55) < 0.2) gEmit += (led > 0.96 ? vec3(1.0, 0.6, 0.1) : led > 0.88 ? vec3(0.2, 0.6, 1.0) : vec3(0.2, 1.0, 0.4)) * 0.9 * k;
+    }
+    if (door) { c = vec3(0.07, 0.08, 0.09); gEmit = vec3(0.0); if (fract(u * 4.0) < 0.1 && foot > 1.0 && foot < 6.0) c *= 0.4; }   // a mesh door
+  } else if (sk == 40) {    // force field: an energy wall between emitter rails, hexes and interference bands
+    vec2 hx = hexCell(vec2(u, y), 0.9);
+    float band = 0.5 + 0.5 * sin(y * 3.0 + u * 0.7 + 3.0 * vnoise(vec2(u, y) * 0.3));
+    vec3 fc = mix(vec3(0.2, 0.8, 1.0), uTrim, 0.4);
+    c = fc * 0.15; gEmit = fc * (0.18 + 0.25 * band * band + 0.5 * sstep(0.05, 0.0, hx.x) * dtl(0.08, px));
+    if (foot < 0.6 || dt < 0.4) { c = vec3(0.12, 0.13, 0.15); gEmit = abs(foot - 0.55) < 0.05 || abs(dt - 0.35) < 0.05 ? fc : vec3(0.0); }   // the emitter rails
+    if (door) { c = fc * 0.1; gEmit *= 0.6; }
+  } else if (sk == 41) {    // hangar bulkhead: heavy grey plates, hazard bands, big stencilled bay numbers
+    vec3 b = blocks(u, foot, 6.0, 3.0, 0.0);
+    c = vec3(0.38, 0.40, 0.42) * (0.85 + 0.2 * hash(b.xy + 8.8)) * (0.9 + 0.12 * fbm(vec2(u, y)));
+    c *= mix(1.0, 0.45, sstep(0.06, 0.03, b.z) * dtl(0.12, px));
+    if (abs(mod(u, 12.0) - 6.0) > 5.6) c = vec3(0.22, 0.23, 0.25);
+    float cu = fract(u / 24.0) * 24.0;
+    if (cu > 8.0 && cu < 16.0 && foot > 3.0 && foot < 7.5) {
+      float g = (cu - 8.0) / 4.0, dg = floor(g);
+      if (seg7(vec2(fract(g), (foot - 3.0) / 4.5), int(hash(vec2(floor(u / 24.0), dg)) * 9.99)) > 0.5) c = vec3(0.85, 0.72, 0.18) * (0.85 + 0.2 * vnoise(vec2(u, y) * 3.0));
+    }
+    if (foot < 1.2 || abs(foot - 9.0) < 0.4) c = hazard(u * 0.5, foot * 0.5);
+    if (door) { c = vec3(0.32, 0.34, 0.36) * (abs(fract(foot / 1.2) - 0.5) > 0.45 ? 0.5 : 1.0); if (foot < 1.2) c = hazard(u * 0.5, foot * 0.5); }   // a slatted shutter
+  } else if (sk == 42) {    // art deco: black lacquer in gold-framed panels, fans and stepped lines (noir lobbies, speakeasies)
+    vec3 gold = vec3(0.85, 0.66, 0.30) * (0.85 + 0.25 * vnoise(vec2(u * 2.0, y * 2.0)));
+    float pu = fract(u / 4.0) * 4.0 - 2.0, k = dtl(0.14, px), g = 0.0;
+    c = vec3(0.05, 0.045, 0.045) * (0.9 + 0.2 * vnoise(vec2(u, y) * 3.0));
+    if (abs(pu) > 1.86 || foot < 0.7 || dt < 0.35) g = 1.0;
+    vec2 fv = vec2(pu, foot - 1.0); float fr = length(fv), fa = atan(fv.x, max(fv.y, 1e-3));
+    if (fv.y > 0.0 && fr < 3.1 && (abs(fract(fa / 0.2618) - 0.5) > 0.4 || abs(fr - 2.4) < 0.08 || abs(fr - 3.0) < 0.1 || fr < 0.5)) g = 1.0;   // a sunburst fan
+    if (foot > 5.0 && abs(abs(pu) - (0.3 + floor((foot - 5.0) / 0.5) * 0.3)) < 0.08) g = 1.0;   // stepped lines above it
+    c = mix(c, gold, g * k + (1.0 - k) * 0.3);
+    if (door) { c = vec3(0.05); if (abs(pu) > 1.8 || abs(fract(foot / 1.5) - 0.5) > 0.44) c = gold; }
+  } else if (sk == 43) {    // reactor: dark plating, glowing coolant tubes, warning chevrons
+    c = vec3(0.14, 0.15, 0.16) * (0.85 + 0.2 * fbm(vec2(u, y) * 0.7));
+    c *= mix(1.0, 0.55, sstep(0.05, 0.02, blocks(u, foot, 3.0, 3.0, 0.0).z) * dtl(0.1, px));
+    float tu = fract(u / 5.0) * 5.0 - 2.5, tr = 0.45;
+    vec3 cc = hash(vec2(floor(u / 5.0), 2.2)) > 0.5 ? vec3(0.2, 0.75, 1.0) : vec3(1.0, 0.45, 0.1);
+    bool col = foot > 1.0 && dt > 1.0;
+    if (col && abs(tu) < tr) {
+      float s = sqrt(1.0 - (tu / tr) * (tu / tr));
+      c = cc * 0.15; gEmit = cc * (0.4 + 0.6 * s) * (0.85 + 0.15 * sin(foot * 6.0 + u));
+      if (abs(fract(foot / 2.0) - 0.5) > 0.46) { c = vec3(0.3); gEmit = vec3(0.0); }   // clamps
+    } else if (col && abs(tu) < tr + 0.15) c = vec3(0.35, 0.36, 0.38);
+    else if (col) gEmit = cc * 0.12 * sstep(1.4, tr, abs(tu));   // the tube's glow on the plating
+    if (foot < 0.8) c = hazard(u * 0.7, foot * 0.7);
+    if (door) { c = vec3(0.2, 0.21, 0.22); gEmit = vec3(0.0); if (abs(foot - 3.5) < 0.4) c = hazard(u, foot); }
+  } else if (sk == 44) {    // viewports: tall windows onto space - stars and a nebula - in a panelled hull
+    float wu = fract(u / 6.0) * 6.0;
+    if (wu > 0.8 && wu < 5.2 && foot > 2.5 && dt > 1.0) {
+      vec2 q = vec2(u, y) * 0.15 + n2 * 3.0;
+      vec3 neb = mix(vec3(0.25, 0.05, 0.35), vec3(0.05, 0.25, 0.4), fbm(q * 0.7)) * smoothstep(0.35, 0.8, fbm(q * 0.5 + 4.0));
+      vec2 sc = floor(vec2(u, y) * 3.0);
+      float star = hash(sc + 7.0) > 0.97 ? sstep(0.25, 0.0, length(fract(vec2(u, y) * 3.0) - 0.5 - (hash(sc) - 0.5) * 0.4)) : 0.0, k = dtl(0.2, px);
+      c = vec3(0.005); gEmit = neb * 0.8 + vec3(0.9, 0.95, 1.0) * star * k + vec3(0.02) * (1.0 - k);
+      if (abs(wu - 3.0) < 0.06) { c = vec3(0.3); gEmit = vec3(0.0); }
+    } else {
+      c = vec3(0.62, 0.65, 0.68) * (0.92 + 0.08 * vnoise(vec2(u, y) * 2.0));
+      c *= mix(1.0, 0.55, sstep(0.05, 0.02, blocks(u, foot, 3.0, 2.5, 0.0).z) * dtl(0.1, px));
+      if (wu > 0.6 && wu < 5.4 && foot > 2.3 && dt > 0.8) c = vec3(0.18, 0.19, 0.21);   // the window's frame
+      if (foot < 0.6) c = vec3(0.12, 0.13, 0.15);
+    }
+    if (door) { c = vec3(0.45, 0.48, 0.52); gEmit = vec3(0.0); if (abs(fract(u / 4.0) - 0.5) < 0.012) c *= 0.3; }
   } else {                  // 12: match the map - the floor's own colours next to the wall, in plain panels
     c = textureLod(uFloor, (xz + n2 * 2.0 * uPpf) / uWorld, 4.5).rgb * 1.05;
     c *= mix(1.0, 0.7, sstep(0.05, 0.02, blocks(u, y, 4.0, 4.0, 0.0).z) * dtl(0.12, px));
@@ -309,8 +626,18 @@ vec3 wallSkin(int sk, float u, float y, float dt, float foot, vec2 uv, vec2 xz, 
 }
 // what raised areas (crates, counters, daises) are built of: sci-fi skins keep plain metal (0); natural ones use their
 // material (timber -> wood, hedge -> stone planters); "match the map" stays the map's colours
-int raisedSkin(int sk){ return (sk == 1 || sk == 7 || sk == 8) ? 0 : sk == 6 ? 5 : sk == 10 ? 3 : sk; }
+int raisedSkin(int sk){
+  if (sk == 1 || sk == 7 || sk == 8 || sk == 13 || sk == 15 || sk == 18 || sk == 20 || (sk >= 22 && sk <= 23) || (sk >= 26 && sk <= 28) || sk == 31 || (sk >= 38 && sk != 42)) return 0;
+  return sk == 6 || sk == 17 || sk == 33 ? 5 : sk == 10 || sk == 32 ? 3 : sk == 37 ? 4 : sk;
+}
 // the tops of walls (seen from above) in the skin's colour
+const vec3 SKIN_TOP[32] = vec3[32](vec3(0.45, 0.48, 0.50), vec3(0.80, 0.80, 0.78), vec3(0.40, 0.40, 0.39), vec3(0.52, 0.53, 0.52),
+  vec3(0.75, 0.72, 0.66), vec3(0.60, 0.63, 0.66), vec3(0.58, 0.45, 0.28), vec3(0.18, 0.10, 0.09), vec3(0.12, 0.06, 0.10),
+  vec3(0.05, 0.05, 0.05), vec3(0.78, 0.80, 0.80), vec3(0.45, 0.20, 0.12), vec3(0.70, 0.72, 0.76), vec3(0.08, 0.08, 0.08),
+  vec3(0.04, 0.06, 0.08), vec3(0.20, 0.21, 0.21), vec3(0.38, 0.20, 0.10), vec3(0.20, 0.12, 0.17), vec3(0.24, 0.26, 0.29),
+  vec3(0.17, 0.16, 0.19), vec3(0.25, 0.15, 0.08), vec3(0.42, 0.41, 0.36), vec3(0.30, 0.29, 0.29), vec3(0.55, 0.50, 0.40),
+  vec3(0.20, 0.15, 0.25), vec3(0.78, 0.84, 0.88), vec3(0.06, 0.06, 0.07), vec3(0.14, 0.15, 0.17), vec3(0.36, 0.38, 0.40),
+  vec3(0.08, 0.07, 0.06), vec3(0.16, 0.17, 0.18), vec3(0.55, 0.58, 0.62));
 vec3 skinTop(int sk, vec2 xz, vec2 uv){
   vec2 q = xz / uPpf; float n = 0.85 + 0.3 * vnoise(q * 1.7);
   if (sk == 1) return vec3(0.46, 0.46, 0.44) * n;
@@ -324,11 +651,17 @@ vec3 skinTop(int sk, vec2 xz, vec2 uv){
   if (sk == 9) return vec3(0.88, 0.86, 0.82) * (0.95 + 0.05 * n);
   if (sk == 10) return vec3(0.14, 0.32, 0.10) * (0.7 + 0.6 * vnoise(q * 5.0));
   if (sk == 11) return vec3(0.72, 0.58, 0.40) * n;
+  if (sk >= 13) return SKIN_TOP[min(sk - 13, 31)] * n;
   return textureLod(uFloor, uv, 4.5).rgb * 1.15;
 }
-// ceilings (seen from below) in the wall skin's material; xz in px; may light a strip (glow, glowCol)
+// the wall-skin pattern to draw at this pixel (-1 = none) and where on it: wallSkin is big, so it is drawn from one
+// place only (each call would be compiled in full), after the surface has said what it wants
+int wsSk; float wsU, wsY, wsDt, wsFt, wsMul; vec2 wsN; bool wsDoor;
+// ceilings (seen from below) in the wall skin's material; xz in px; may light a strip (glow, glowCol). Ceilings made of
+// the wall's own pattern ask for it (wsSk...) and are finished by ceilPost
 vec3 ceilSkin(int sk, vec2 xz, vec2 uv, float px, inout float glow, inout vec3 glowCol){
-  vec2 q = xz / uPpf; vec3 c;
+  vec2 q = xz / uPpf; vec3 c = vec3(0.0); gEmit = vec3(0.0);
+  wsSk = -1; wsU = q.x; wsY = q.y; wsDt = 9.0; wsFt = 9.0; wsN = vec2(0.0); wsDoor = false; wsMul = 1.0;
   if (sk == 0) {            // neon: dark metal panels (like the walls), recessed seams, glowing light strips
     vec2 cell = floor(q / 5.0), f = abs(fract(q / 5.0) - 0.5) * 5.0;
     c = mix(vec3(0.12, 0.13, 0.155), textureLod(uFloor, uv, 6.0).rgb, 0.22) * (0.82 + 0.22 * hash(cell + 7.3)) * (0.92 + 0.1 * vnoise(q * 0.8));
@@ -339,20 +672,90 @@ vec3 ceilSkin(int sk, vec2 xz, vec2 uv, float px, inout float glow, inout vec3 g
   } else if (sk == 12) {    // match the map: its own colours, dimmed, in big plain panels
     c = textureLod(uFloor, uv, 5.0).rgb * 0.55 + vec3(0.02);
     c *= mix(1.0, 0.7, sstep(0.06, 0.02, blocks(q.x, q.y, 6.0, 6.0, 0.0).z) * dtl(0.12, px));
-  } else if (sk == 5) {     // boards across joists
+  } else if (sk == 13 || sk == 14 || sk == 16 || sk == 23) {   // offices, clinics, washrooms: ceiling tiles with light panels
+    vec3 b = blocks(q.x, q.y, 2.0, 4.0, 0.0); vec2 cell = floor(q / vec2(2.0, 4.0));
+    c = vec3(0.78, 0.78, 0.76) * (0.95 + 0.05 * hash(cell)) * (0.92 + 0.1 * vnoise(q * 6.0));
+    c *= mix(1.0, 0.6, sstep(0.05, 0.02, b.z) * dtl(0.08, px));
+    if (mod(cell.x, 3.0) < 1.0 && mod(cell.y, 2.0) < 1.0 && b.z > 0.12) { glow = 1.0; glowCol = vec3(1.0, 0.98, 0.92) * 0.8; }
+  } else if (sk == 17) {    // plaster in big moulded panels
+    c = vec3(0.80, 0.78, 0.72) * (0.94 + 0.08 * fbm(q * 0.8));
+    c *= mix(1.0, 0.8, sstep(0.25, 0.1, blocks(q.x, q.y, 8.0, 8.0, 0.0).z) * dtl(0.1, px));
+  } else if (sk == 15 || sk == 20) {   // bare concrete (dark in a neon alley)
+    wsSk = 1; wsMul = sk == 20 ? 0.4 : 1.0;
+  } else if (sk == 22 || sk == 39) {    // a black box (or a server room): matte black with a truss / cable-tray grid
+    c = vec3(0.035, 0.035, 0.04) * (0.9 + 0.2 * vnoise(q));
+    if (abs(mod(q.x, 8.0) - 4.0) > 3.85 || abs(mod(q.y, 8.0) - 4.0) > 3.85) c = vec3(0.12);
+  } else if (sk == 5 || sk == 19) {     // boards across joists
     c = woodCol(q.x, q.y, px, 0.8) * 0.85;
     if (abs(mod(q.y, 4.0) - 2.0) > 1.68) c = woodCol(q.y, q.x, px, 0.6) * 0.55;
   } else if (sk == 6) {     // plaster between dark timber beams
     c = vec3(0.70, 0.66, 0.56) * (0.88 + 0.14 * fbm(q * 1.6));
     if (abs(mod(q.x, 4.0) - 2.0) > 1.7 || abs(mod(q.y, 16.0) - 8.0) > 7.45) c = vec3(0.22, 0.13, 0.07) * (0.85 + 0.3 * vnoise(vec2(q.x * 0.4, q.y * 4.0)));
-  } else if (sk == 7) {     // steel deck plates on girders
-    c = wallSkin(7, q.x, q.y, 9.0, 9.0, uv, xz, vec2(0.0), false, px);
-    if (abs(mod(q.x, 8.0) - 4.0) > 3.6) c = vec3(0.20, 0.21, 0.23) * (0.9 + 0.2 * vnoise(q * 3.0));
-  } else if (sk == 9) {     // marble coffers with gold edges
-    c = wallSkin(9, q.x, q.y, 9.0, 9.0, uv, xz, vec2(0.0), false, px);
+  } else if (sk == 7 || sk == 40 || sk == 41) wsSk = 7;   // steel deck plates on girders (ceilPost)
+  else if (sk == 9) wsSk = 9;                                // marble coffers with gold edges (ceilPost)
+  else if (sk == 44) { wsSk = 18; wsFt = 40.0 + q.y; }      // viewports: starship panels
+  else { wsSk = sk; wsFt = sk == 28 || sk == 43 ? mod(q.y, 9.0) : 40.0 + q.y; }   // the wall's own pattern (pipes, reactor: ducts every 9 ft)
+  return c;
+}
+// what goes over a ceiling drawn in the wall's pattern: girders, coffers
+vec3 ceilPost(int sk, vec2 q, vec3 c){
+  if (sk == 7 || sk == 40 || sk == 41) { if (abs(mod(q.x, 8.0) - 4.0) > 3.6) c = vec3(0.20, 0.21, 0.23) * (0.9 + 0.2 * vnoise(q * 3.0)); }
+  else if (sk == 9) {
     vec2 f = abs(fract(q / 6.0) - 0.5) * 6.0; float e = 3.0 - max(f.x, f.y);
     if (e < 0.12) c = vec3(0.95, 0.72, 0.30) * (0.85 + 0.3 * vnoise(q * 2.0)); else if (e < 0.5) c *= 0.8;
-  } else c = wallSkin(sk, q.x, q.y, 9.0, 9.0, uv, xz, vec2(0.0), false, px);   // concrete, brick, stone, rock, scrap, hedge, sandstone
+  }
+  return c;
+}
+
+// what a sloped roof is covered with: 0 standing-seam metal, 1 clay tiles, 2 slate, 3 wood shingles, 4 thatch, 5 corrugated sheet
+int roofMat(int sk){
+  if (sk == 2 || sk == 9 || sk == 11) return 1;
+  if (sk == 3 || sk == 4 || sk == 32 || sk == 34 || sk == 35 || sk == 37) return 2;
+  if (sk == 5 || sk == 6 || sk == 17 || sk == 33 || sk == 36) return 3;
+  if (sk == 10) return 4;
+  if (sk == 8 || sk == 15 || sk == 19 || sk == 24 || sk == 29) return 5;
+  return 0;
+}
+// roofs seen from above (a token's eye view): sloped ones in a covering that suits the walls, flat ones in the wall tops'
+// colour with seams and a few vents; sl = the slope (height per px across x and z)
+vec3 roofSkin(int sk, vec2 xz, vec2 uv, float px, vec2 sl, int mo){   // mo: a covering picked in Scene / Region Config (-1 = suit the walls)
+  vec2 q = xz / uPpf; vec3 c;
+  bool flt = dot(sl, sl) < 1e-4;
+  if (flt && mo < 0) {
+    c = skinTop(sk, xz, uv) * 0.8 * (0.9 + 0.15 * fbm(q * 0.6));
+    vec3 b = blocks(q.x, q.y, 6.0, 6.0, 0.0); float vr = length(fract(q / 6.0) * 6.0 - 3.0);
+    c *= mix(1.0, 0.75, sstep(0.06, 0.02, b.z) * dtl(0.1, px));
+    if (hash(b.xy + 3.7) > 0.9 && vr < 0.9) c = vec3(0.22, 0.23, 0.24) * (vr < 0.6 ? 0.5 : 1.0);   // a vent
+    return c;
+  }
+  vec2 dn = flt ? vec2(0.0, 1.0) : -normalize(sl), ac = vec2(-dn.y, dn.x);
+  float u = dot(q, ac), v = dot(q, dn) * sqrt(1.0 + dot(sl, sl));   // ft across and down the roof
+  int m = mo >= 0 ? mo : roofMat(sk);
+  if (m == 1) {          // clay barrel tiles
+    float row = floor(v), cu = u / 0.75 + 0.5 * mod(row, 2.0);
+    c = mix(vec3(0.55, 0.22, 0.12), vec3(0.70, 0.34, 0.18), hash(vec2(floor(cu), row)));
+    c *= mix(1.0, 0.65 + 0.45 * sin(fract(cu) * 3.1416), dtl(0.2, px)) * mix(1.0, 0.6, sstep(0.85, 1.0, fract(v)) * dtl(0.1, px));
+  } else if (m == 2) {   // slate
+    vec3 b = blocks(u, v, 1.0, 0.6, 0.5);
+    c = mix(vec3(0.17, 0.19, 0.22), vec3(0.28, 0.30, 0.33), hash(b.xy + 6.1)) * (0.9 + 0.15 * vnoise(q * 3.0));
+    c *= mix(1.0, 0.55, sstep(0.04, 0.015, b.z) * dtl(0.08, px));
+  } else if (m == 3) {   // wood shingles
+    vec3 b = blocks(u, v, 0.55, 0.45, 0.5);
+    c = vec3(0.36, 0.24, 0.14) * (0.7 + 0.45 * hash(b.xy + 2.9)) * (0.88 + 0.15 * vnoise(vec2(u * 8.0, v)));
+    c *= mix(1.0, 0.55, sstep(0.035, 0.01, b.z) * dtl(0.08, px));
+  } else if (m == 4) {   // thatch, combed down the roof
+    c = vec3(0.55, 0.45, 0.25) * (0.7 + 0.45 * vnoise(vec2(u * 9.0, v * 0.6))) * (0.85 + 0.2 * fbm(q * 0.4));
+    c *= mix(1.0, 0.8, sstep(0.75, 1.0, fract(v / 1.5)) * dtl(0.2, px));
+  } else if (m == 5) {   // corrugated sheet, patched and rusty
+    float hs = hash(vec2(floor(u / 3.0), floor(v / 8.0)));
+    c = hs < 0.6 ? vec3(0.45, 0.45, 0.44) : hs < 0.8 ? vec3(0.42, 0.24, 0.12) : vec3(0.25, 0.35, 0.33);
+    c *= 1.0 - 0.25 * dtl(0.12, px) * (0.5 + 0.5 * sin(u * 6.2831 / 0.33));
+    c = mix(c, vec3(0.38, 0.18, 0.08), smoothstep(0.55, 0.8, fbm(q * 0.6)) * 0.7);
+  } else {               // standing-seam metal
+    c = mix(vec3(0.30, 0.33, 0.36), skinTop(sk, xz, uv), 0.25) * (0.92 + 0.1 * vnoise(vec2(u * 0.5, v * 0.1)));
+    float f = abs(fract(u / 1.5) - 0.5) * 1.5;
+    c *= mix(1.0, f > 0.7 ? 1.35 : f > 0.66 ? 0.6 : 1.0, dtl(0.08, px));
+  }
   return c;
 }
 
@@ -383,8 +786,6 @@ vec2 tplAt(vec2 xz, float pxw){
   return r;
 }
 
-vec3 gEmit;
-vec3 hue3(float h){ return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0); }
 vec3 propFace(int L, int face, float U, float Uf, float Y, float H, float W, float Us, float D, vec3 tc, vec3 edge, float px, float seed){
   float T = clamp(Y / max(H, 0.5), 0.0, 1.0);
   // a long block of cabinets / machines / racks: one unit every few feet along the front, each a little different
@@ -729,8 +1130,12 @@ void main(){
     for (int k = 0; k < 9; k++) { float m = 0.5 * (a + b); vec3 q = o + d * m; if (solidAt(q, m)) b = m; else a = m; }
     t = b;
   }
-  bool isCeil = false;   // a room's ceiling overhead (nearer than what the march found)
-  if (uCeilN > 0) { float tc = ceilHit(o, d, true); if (tc < (hit ? t : 1e12) && tc > 0.0) { hit = true; isCeil = true; t = tc; } }
+  bool isCeil = false, isRoof = false;   // a room's ceiling overhead, or (a token's eye view) a roof from above, nearer than the march's hit
+  vec4 cP = vec4(0.0);
+  if (uCeilN > 0) {
+    int cw; float tc = ceilHit(o, d, true, cw);
+    if (cw >= 0 && tc < (hit ? t : 1e12) && tc > 0.0) { hit = true; t = tc; cP = uCeilP[cw]; isRoof = cP.x + cP.y * o.x + cP.z * o.z < o.y; isCeil = !isRoof; }
+  }
   if (hit) {
     tHit = t;
     vec3 p = o + d * t;
@@ -747,11 +1152,13 @@ void main(){
     vec2 sl = slabAt(p.xz);
     bool onSlab = sl.y > sl.x && p.y > hb + 0.2 * uPpf && p.y > sl.x - 0.4 * uPpf;
     bool underSlab = !onSlab && sl.y > sl.x && p.y < sl.x;
-    if (isCeil) { onSlab = true; underSlab = false; }
+    if (isCeil || isRoof) { onSlab = true; underSlab = false; }
+    float slabG = texelFetch(uCeil, ivec2(clamp(p.xz / uWorld * uHRes, vec2(0.0), uHRes - 1.0)), 0).g;
+    bool lintel = onSlab && !isCeil && !isRoof && slabG > 0.3 && slabG < 0.75;   // the wall over a door
     int sf = 0;
     vec2 en = vec2(0.0);
     if (onSlab) {
-      sf = isCeil ? 2 : (p.y > sl.y - 0.35 * uPpf && d.y < 0.0) ? 1 : (p.y < sl.x + 0.35 * uPpf && d.y > 0.0) ? 2 : 3;
+      sf = isCeil ? 2 : isRoof ? 4 : (p.y > sl.y - 0.35 * uPpf && d.y < 0.0) ? 1 : (p.y < sl.x + 0.35 * uPpf && d.y > 0.0) ? 2 : 3;
       if (sf == 3) {   // which way its edge faces
         float ee = texel * 1.5;
         vec2 so = vec2((slabAt(p.xz + vec2(ee, 0.0)).y > -0.5 ? 1.0 : 0.0) - (slabAt(p.xz - vec2(ee, 0.0)).y > -0.5 ? 1.0 : 0.0),
@@ -771,10 +1178,12 @@ void main(){
     vec2 n2 = length(g) > 1e-4 ? normalize(-g) : -normalize(d.xz + 1e-5);
     if (sf == 3) n2 = en;
     vec3 N = side ? vec3(n2.x, 0.0, n2.y) : vec3(0.0, 1.0, 0.0);
-    if (sf == 2) N = vec3(0.0, -1.0, 0.0);
+    if (sf == 2) N = isCeil ? normalize(vec3(cP.y, -1.0, cP.z)) : vec3(0.0, -1.0, 0.0);
+    if (sf == 4) N = normalize(vec3(-cP.y, 1.0, -cP.z));
     float glow = 0.0; vec3 glowCol = uTrim;   // self-lit bits (glow trims, token rings): a dark mood doesn't dim them
     bool skinCeil = false;                     // a ceiling in the wall skin's material
     float pxFt = t * 2.0 * uTanX / uRes.x / uPpf / (side ? max(abs(dot(d, N)), 0.25) : max(abs(d.y), 0.25));
+    wsSk = -1; wsMul = 1.0; wsDoor = false; int wsCase = 0;   // the wall-skin pattern this pixel wants (drawn once, below)
     if (!side) {
       col = underSlab ? textureLod(uFloor, uv, 4.5).rgb * 0.8 : texture(uFloor, uv).rgb;
       if (cut) {
@@ -814,7 +1223,7 @@ void main(){
         float hd = distance(p.xz, uHover.xy);
         if (abs(hd - uHover.z) < max(uHover.z * 0.08, 1.5 * texel) || (uHoverCol.a < 1.2 && hd < uHover.z * 0.18)) { glow = 1.0; glowCol = uHoverCol.rgb * (1.25 + 0.35 * sin(uTime * 6.0)); }
       }
-    } else {
+    } else if (sf == 0) {   // (slabs' undersides, edges and roofs are drawn below)
       vec3 base = mix(vec3(0.20, 0.22, 0.25), textureLod(uFloor, uv, 3.0).rgb, 0.35);
       float rel = clamp(1.0 - (hb - p.y) / (30.0 * uPpf), 0.0, 1.0);
       float dt = (hb - p.y) / uPpf;
@@ -856,8 +1265,7 @@ void main(){
         if (abs(mod(fu, 3.0) - 1.5) > 1.44) col *= 0.8;
       } else if (kd == 5) {
         // raised areas in a skinned scene are built of the same material, with the top's art showing at the lip
-        col = wallSkin(raisedSkin(sk), fu, p.y / uPpf, dt, foot, uv, p.xz, n2, false, pxFt) * (0.62 + 0.38 * rel);
-        if (dt < 0.12) col = mix(col, textureLod(uFloor, uv, 1.0).rgb, 0.6) * 1.2;
+        wsSk = raisedSkin(sk); wsU = fu; wsY = p.y / uPpf; wsDt = dt; wsFt = foot; wsN = n2; wsMul = 0.62 + 0.38 * rel; wsCase = 1;   // (its lip: below)
       } else if (kd == 6) {
         // height-map terrain: the map art carries down the slope
         col = texture(uFloor, uv).rgb * (0.6 + 0.4 * rel);
@@ -875,32 +1283,54 @@ void main(){
         if (kd == 3) col = mix(col, vec3(0.12, 0.45, 0.55), 0.6);
         if (dt > 0.6 && dt < 1.1) glow = 1.0;
       } else {
-        col = wallSkin(sk, fu, p.y / uPpf, dt, foot, uv, p.xz, n2, kd == 3, pxFt) * (0.55 + 0.45 * rel);
+        wsSk = sk; wsU = fu; wsY = p.y / uPpf; wsDt = dt; wsFt = foot; wsN = n2; wsDoor = kd == 3; wsMul = 0.55 + 0.45 * rel; wsCase = 2;
       }
     }
     if (sf == 2) {   // the underside of a deck, or a ceiling (rooms', and a higher level's floor): those wear the wall skin
       glow = 0.0; emit = vec3(0.0);
       ivec2 cij = ivec2(clamp(p.xz / uWorld * uHRes, vec2(0.0), uHRes - 1.0));
-      if (isCeil || texelFetch(uCeil, cij, 0).g > 0.5) {
+      if (lintel) col = skinTop(sk, p.xz, uv) * 0.5;   // under the wall over a door
+      else if (isCeil || texelFetch(uCeil, cij, 0).g > 0.75) {
         skinCeil = true;
-        col = ceilSkin(sk, p.xz, uv, pxFt, glow, glowCol);
-        if (glow > 0.0) { emit += glowCol * glow * 1.1; col *= 0.4; glow = 0.0; }   // light strips shine in any light
-        float nw = 0.0;   // darker where it meets a wall
-        for (int q = 0; q < 8; q++) {
-          float an = float(q) * 0.785398, rr = (q < 4 ? 0.7 : 1.6) * uPpf;
-          nw += step(p.y - 0.8 * uPpf, hAt(p.xz + vec2(cos(an), sin(an)) * rr)) * (q < 4 ? 0.6 : 0.4);
-        }
-        col *= 1.0 - 0.14 * nw;
+        col = ceilSkin(sk, p.xz, uv, pxFt, glow, glowCol); emit += gEmit; if (wsSk >= 0) wsCase = 4;   // (finished below)
       } else col = textureLod(uFloor, uv, 6.0).rgb * 0.3 + vec3(0.045, 0.04, 0.035);
     }
+    else if (sf == 3 && lintel) {   // the wall over a door: the wall's own skin, its trim lined up with the wall's
+      float fu2 = dot(p.xz, vec2(-en.y, en.x)) / uPpf, dt2 = (sl.y - p.y) / uPpf, ft2 = (p.y - hAt(p.xz + en * texel * 3.0)) / uPpf;
+      glow = 0.0; emit = vec3(0.0);
+      if (sk == 0) {
+        col = mix(vec3(0.20, 0.22, 0.25), textureLod(uFloor, uv, 3.0).rgb, 0.35);
+        if (abs(mod(p.y / uPpf, 4.0) - 2.0) > 1.85 || abs(mod(fu2, 5.0) - 2.5) > 2.42) col *= 0.45;
+        if (dt2 > 0.6 && dt2 < 1.1) glow = 1.0;
+      } else { wsSk = sk; wsU = fu2; wsY = p.y / uPpf; wsDt = dt2; wsFt = ft2; wsN = en; wsMul = 0.95; wsCase = 3; }
+    }
     else if (sf == 3) { col = textureLod(uFloor, uv, 2.0).rgb * 0.55; glow = 0.0; emit = vec3(0.0); }      // its edge
+    else if (sf == 4) {   // a roof seen from above
+      int mo = int(texelFetch(uCeil, ivec2(clamp(p.xz / uWorld * uHRes, vec2(0.0), uHRes - 1.0)), 0).b * 255.0 + 0.5) - 1;
+      col = roofSkin(sk, p.xz, uv, pxFt, cP.yz, mo >= 0 ? mo : uRoofMat); glow = 0.0; emit = vec3(0.0);
+    }
+    // the wall-skin pattern asked for above (a wall, a raised area, the wall over a door, a ceiling): drawn here, once
+    if (wsSk >= 0) {
+      col = wallSkin(wsSk, wsU, wsY, wsDt, wsFt, uv, p.xz, wsN, wsDoor, pxFt) * wsMul; emit += gEmit;
+      if (wsCase == 1 && wsDt < 0.12) col = mix(col, textureLod(uFloor, uv, 1.0).rgb, 0.6) * 1.2;   // a raised area's lip
+      if (wsCase == 4) col = ceilPost(sk, p.xz / uPpf, col);
+    }
+    if (skinCeil) {   // a ceiling in the wall skin's material
+      if (glow > 0.0) { emit += glowCol * glow * 1.1; col *= 0.4; glow = 0.0; }   // light strips shine in any light
+      float nw = 0.0;   // darker where it meets a wall
+      for (int q = 0; q < 8; q++) {
+        float an = float(q) * 0.785398, rr = (q < 4 ? 0.7 : 1.6) * uPpf;
+        nw += step(p.y - 0.8 * uPpf, hAt(p.xz + vec2(cos(an), sin(an)) * rr)) * (q < 4 ? 0.6 : 0.4);
+      }
+      col *= 1.0 - 0.14 * nw;
+    }
     // light: "automatic" keeps the map's own light (walls shaded by a fixed key); a mood tints it, adds a sun (or moon)
     // with shadows, and scales the scene's lights
     float keyT = clamp(dot(N.xz, normalize(vec3(0.35, 0.8, -0.45)).xz), 0.0, 1.0);
     vec3 alb;
     if (uMood < 0.5) {
       col = mix(col, glowCol, glow);
-      if (side) col *= 0.5 + 0.5 * keyT;
+      if (side) col *= sf == 4 ? 0.75 + 0.25 * clamp(N.y, 0.0, 1.0) : 0.5 + 0.5 * keyT;
       alb = col;
     } else {
       alb = col;
@@ -1072,17 +1502,25 @@ void main(){ vec3 c = texture(uSrc, vUv).rgb + (texture(uB1, vUv).rgb * 0.6 + te
   vec2 q = vUv - 0.5; c *= 1.0 - 0.38 * ((q.x * 1.4) * (q.x * 1.4) + (q.y * 1.6) * (q.y * 1.6));
   c = pow(clamp(c * 1.12, 0.0, 1.0), vec3(1.0 / 1.05)); o = vec4(c, 1.0); }`;
 
-function compile(gl, vs, fs) {
-  const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error("Vantage shader: " + gl.getShaderInfoLog(s)); return s; };
-  const p = gl.createProgram();
-  gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs));
+// shaders: started without waiting (the big scene shader compiles in the background where the GPU allows it, so the page
+// never freezes while a driver works on it), then finished: checked and its uniforms looked up
+function startCompile(gl, vs, fs) {
+  const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  const p = gl.createProgram(), v = mk(gl.VERTEX_SHADER, vs), f = mk(gl.FRAGMENT_SHADER, fs);
+  gl.attachShader(p, v); gl.attachShader(p, f);
   gl.bindAttribLocation(p, 0, "aPos"); gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error("Vantage link: " + gl.getProgramInfoLog(p));
+  return {p, v, f};
+}
+function finishCompile(gl, {p, v, f}) {
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    for (const s of [v, f]) if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error("Vantage shader: " + gl.getShaderInfoLog(s));
+    throw new Error("Vantage link: " + gl.getProgramInfoLog(p));
+  }
   const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
   for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(p, i); const name = info.name.replace(/\[0\]$/, ""); u[name] = gl.getUniformLocation(p, info.name); }
   return {p, u};
 }
+const compile = (gl, vs, fs) => finishCompile(gl, startCompile(gl, vs, fs));
 
 /** haze colour: deep teal by default, pulled toward the map's own average colour (more of it in daylight) */
 export function fogColour(day = 0, mean = null) {
@@ -1093,7 +1531,12 @@ export function fogColour(day = 0, mean = null) {
 }
 
 /** wall skins, in shader order (Settings > Wall skin, Scene Config > Vantage) */
-export const WALL_SKINS = ["neon", "concrete", "brick", "stone", "rock", "wood", "timber", "steel", "scrap", "marble", "hedge", "sandstone", "map"];
+export const WALL_SKINS = ["neon", "concrete", "brick", "stone", "rock", "wood", "timber", "steel", "scrap", "marble", "hedge", "sandstone", "map",
+  "glass", "tile", "graffiti", "cinder", "wallpaper", "panel", "plywood", "neonbrick", "padded", "ledwall", "clinic", "container", "chrome",
+  "carbon", "holo", "pipes", "rust", "biotech", "hex", "sigil", "shoji", "ruins", "dwarven", "elven", "crystal", "cryo", "server",
+  "forcefield", "hangar", "artdeco", "reactor", "viewport"];
+// what a roof can be covered with (Scene / Region Config); empty = what suits the walls
+export const ROOF_MATS = ["metal", "tiles", "slate", "shingles", "thatch", "corrugated"];
 
 /**
  * lighting moods ("auto" = the map's own light, as painted). amb: how much of the map's light is left (tint);
@@ -1213,7 +1656,8 @@ export class PovRenderer {
     const budget = Math.max(120, gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS) - 80);   // the rest: camera, mood, weather, cover lines...
     this.NL = Math.min(48, Math.floor(budget * 0.25 / 2));
     this.NS = Math.min(48, Math.floor((budget - this.NL * 2) / 5));
-    this.scene = compile(gl, VS, SCENE_FS(this.NL, this.NS));
+    this.parallel = gl.getExtension("KHR_parallel_shader_compile");
+    this._scenePending = startCompile(gl, VS, SCENE_FS(this.NL, this.NS)); this.scene = null;   // see ready()
     this.bright = compile(gl, VS, BRIGHT_FS);
     this.blur = compile(gl, VS, BLUR_FS);
     this.comp = compile(gl, VS, COMP_FS);
@@ -1222,6 +1666,18 @@ export class PovRenderer {
     this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao);
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     this.rts = {}; this.tex = {};
+  }
+
+  /** the scene shader is compiled (true), or still compiling in the background (false); throws if it failed */
+  _sceneReady() {
+    if (this.scene) return true;
+    const gl = this.gl, P = this._scenePending; if (!P) return false;
+    if (this.parallel && !gl.getProgramParameter(P.p, this.parallel.COMPLETION_STATUS_KHR)) return false;
+    this._scenePending = null; this.scene = finishCompile(gl, P); return true;
+  }
+  /** resolves once the scene shader is compiled (polls while the GPU compiles it in the background) */
+  async ready() {
+    while (!this._sceneReady()) await new Promise(r => setTimeout(r, 30));
   }
 
   _texture(img, {mip = false, filter = "linear"} = {}) {
@@ -1299,16 +1755,20 @@ export class PovRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.tex.slab = slt; this.slabOn = !!world.hasSlabs;
-    // rooms' ceilings: which height (1..8) per point, and which slabs are a room's ceiling
+    // rooms' ceilings and roofs: which plane per point, and which slabs are a room's ceiling (255) or the wall over a door (128)
     if (this.tex.ceil) gl.deleteTexture(this.tex.ceil);
-    const cn = world.hw * world.hh, cd = new Uint8Array(cn * 2), CH = world.ceilHeights ?? [];
-    if (CH.length && world.ceilData) for (let k = 0; k < cn; k++) { const v = world.ceilData[k]; if (v > -0.5) cd[k * 2] = CH.indexOf(v) + 1; }
-    if (world.slabCeil) for (let k = 0; k < cn; k++) if (world.slabCeil[k]) cd[k * 2 + 1] = 255;
+    const cn = world.hw * world.hh, cd = new Uint8Array(cn * 4), CP = world.ceilPlanes ?? [];
+    if (CP.length && world.ceilIdx) for (let k = 0; k < cn; k++) cd[k * 4] = world.ceilIdx[k];
+    if (world.slabCeil) for (let k = 0; k < cn; k++) if (world.slabCeil[k]) cd[k * 4 + 1] = world.slabCeil[k] === 2 ? 128 : 255;
+    if (world.roofMatPx) for (let k = 0; k < cn; k++) cd[k * 4 + 2] = world.roofMatPx[k];
+    let ceilTop = -Infinity; if (CP.length && world.ceilData) for (let k = 0; k < cn; k++) if (world.ceilData[k] > ceilTop) ceilTop = world.ceilData[k];
     const ct = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, ct); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG8, world.hw, world.hh, 0, gl.RG, gl.UNSIGNED_BYTE, cd);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, world.hw, world.hh, 0, gl.RGBA, gl.UNSIGNED_BYTE, cd);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    this.tex.ceil = ct; this.ceilH = CH.slice(0, 8);
+    this.tex.ceil = ct; this.ceilTop = ceilTop;
+    // planes in px: height = a * ppf + bx * x + bz * z
+    this.ceilP = new Float32Array(64); CP.slice(0, 16).forEach((P, i) => this.ceilP.set([P.a * world.ppf, P.bx, P.bz, 0], i * 4)); this.ceilN = Math.min(16, CP.length);
     // raised areas that look like something: look / front / region per pixel, a box and picture per region
     for (const k of ["propData", "propInfo", "propPic"]) if (this.tex[k]) gl.deleteTexture(this.tex[k]);
     const nn = (t) => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -1403,7 +1863,7 @@ export class PovRenderer {
    */
   render(cam, lights, standees, opts = {}) {
     const gl = this.gl, w = this.canvas.width, h = this.canvas.height, W = this.world, MAX_LIGHTS = this.NL, MAX_STANDEES = this.NS;
-    if (!W || !w || !h) return;
+    if (!W || !w || !h || !this._sceneReady()) return;   // (still compiling: the next frame draws)
     const Wx = WEATHER[opts.weather] ?? null;
     const M = weathered(moodOf(opts.mood, opts.tint ?? null, opts.dark ?? 0), Wx);
     const sceneRT = this._rt("scene", w, h);
@@ -1443,9 +1903,12 @@ export class PovRenderer {
       this._bindTex(10, this.tex.vis, u.uVis); gl.uniform1f(u.uVisOn ?? null, this.visOn && !opts.noVision ? 1 : 0);
       this._bindTex(11, this.tex.slab, u.uSlab); gl.uniform1f(u.uSlabOn ?? null, this.slabOn ? 1 : 0);
       this._bindTex(12, this.tex.ceil, u.uCeil);
-      const CH = opts.noCeilings ? [] : (this.ceilH ?? []);
-      gl.uniform1i(u.uCeilN ?? null, CH.length);
-      gl.uniform1f(u.uCeilSun ?? null, CH.length && cam.pos[1] / W.ppf < Math.max(...CH) ? 1 : 0); if (u.uCeilH) gl.uniform1fv(u.uCeilH, new Float32Array([...CH, 0, 0, 0, 0, 0, 0, 0, 0].slice(0, 8)));
+      const CN = opts.noCeilings ? 0 : (this.ceilN ?? 0);
+      gl.uniform1i(u.uCeilN ?? null, CN);
+      gl.uniform1f(u.uCeilSun ?? null, CN && cam.pos[1] / W.ppf < this.ceilTop ? 1 : 0);
+      gl.uniform1f(u.uRoofTop ?? null, CN && opts.roofTops ? 1 : 0);
+      gl.uniform1i(u.uRoofMat ?? null, ROOF_MATS.indexOf(opts.roofMat ?? ""));
+      if (u.uCeilP && this.ceilP) gl.uniform4fv(u.uCeilP, this.ceilP);
       this._bindTex(9, this.tex.tpl, u.uTpl); gl.uniform1i(u.uTplN ?? null, this.tplN ?? 0);
       const BM = (opts.beams ?? []).slice(0, 4), BA = new Float32Array(16), BB = new Float32Array(16), BC = new Float32Array(16);
       BM.forEach((b, i) => { BA.set([...b.from, 0], i * 4); BB.set([...b.to, 0], i * 4); BC.set([...b.color, 1], i * 4); });
@@ -1499,7 +1962,7 @@ export class PovRenderer {
     try {
       for (const t of Object.values(this.tex)) gl.deleteTexture(t);
       for (const rt of Object.values(this.rts)) { gl.deleteFramebuffer(rt.fb); gl.deleteTexture(rt.tex); }
-      for (const pr of [this.scene, this.bright, this.blur, this.comp]) if (pr?.p) gl.deleteProgram(pr.p);
+      for (const pr of [this.scene, this._scenePending, this.bright, this.blur, this.comp]) if (pr?.p) gl.deleteProgram(pr.p);
     } catch (e) { /* ignore */ }
     // Free the GPU context once the canvas is gone. Not right away: losing a context in the same moment another one is
     // created (or this canvas is reused, e.g. the players' Live viewer) leaves the new one dead.

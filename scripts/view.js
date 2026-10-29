@@ -1,5 +1,5 @@
 // Vantage - camera + scene state around one renderer (used by the GM window and the players' live view)
-import {PovRenderer, WALL_SKINS} from "./renderer.js";
+import {PovRenderer, WALL_SKINS, ROOF_MATS} from "./renderer.js";
 import {buildWorld, buildStandees, floorAt, heightAt, coverAt, standAt, playFloor, floorFrame, KIND} from "./world.js";
 
 const hash1 = x => { const s = Math.sin(x * 127.1 + 1.7) * 43758.5453; return s - Math.floor(s); };
@@ -72,7 +72,8 @@ export class PovView {
     const key = PovView.key(sceneData, buildOpts);
     let world = this.cache.get(key);
     if (world) this.cache.delete(key);
-    else world = await buildWorld(sceneData, {...buildOpts, maxTex: this.r.maxTex, skins: WALL_SKINS});
+    else world = (await Promise.all([buildWorld(sceneData, {...buildOpts, maxTex: this.r.maxTex, skins: WALL_SKINS, roofMats: ROOF_MATS}), this.r.ready()]))[0];   // (the shader compiles meanwhile)
+    await this.r.ready();
     this.cache.set(key, world);
     while (this.cache.size > 2) this.cache.delete(this.cache.keys().next().value);
     this.world = world;
@@ -147,6 +148,7 @@ export class PovView {
       if (y < hd[(zi * W.hw + xi) * 2] * ppf) return 1;
       if (W.hasSlabs) { const k = (zi * W.hw + xi) * 2, SL = W.slabData; if (SL[k + 1] > SL[k] && y > SL[k] * ppf && y < SL[k + 1] * ppf) return 1; }
     }
+    if (this.ceilT(o, d.map(v => v / L), {roofs: true, cut: false}) < L - 0.3 * g) return 1;   // a room's ceiling or roof in between
     const dd = d[0] * d[0] + d[2] * d[2] || 1;
     for (const s of this.standees) {
       if (skip.includes(s.id) || s.flat || (s.hidden && !this._showHidden)) continue;
@@ -311,8 +313,26 @@ export class PovView {
     // haze starts behind what an overview looks at, so a far-away overview isn't murky
     const fogStart = this.cam.mode === "orbit" ? this.cam.dist * 0.8 : 0;
     this._cut = cut; this._showHidden = showHidden;
-    this.r.render(v, lights, st, {fogStart, ...this.opts, time: live ? t : 0, flash: live ? flashAt(t) : 0, hover: forPlayers ? null : this.hover ?? null, beams: forPlayers ? [] : this.beams ?? [], ...cut});
+    this.r.render(v, lights, st, {fogStart, ...this.opts, roofTops: this.roofTops(), time: live ? t : 0, flash: live ? flashAt(t) : 0, hover: forPlayers ? null : this.hover ?? null, beams: forPlayers ? [] : this.beams ?? [], ...cut});
   }
+
+  /** the first room ceiling (seen from below) or roof (from above, with roofs) along a ray (d: unit): how far (px), or Infinity */
+  ceilT(o, d, {roofs = false, cut = true} = {}) {
+    const W = this.world, P = W?.ceilPlanes, idx = W?.ceilIdx; if (!P?.length || !idx || this.opts.noCeilings) return Infinity;
+    const ppf = W.ppf, hs = W.hs; let best = Infinity;
+    for (let i = 0; i < Math.min(16, P.length); i++) {
+      const bx = P[i].bx, bz = P[i].bz, num = P[i].a * ppf + bx * o[0] + bz * o[2] - o[1], den = d[1] - bx * d[0] - bz * d[2];
+      if (num > 0.05 * ppf) { if (den < 1e-5) continue; } else if (roofs && num < -0.05 * ppf) { if (den > -1e-5) continue; } else continue;
+      const t = num / den; if (!(t > 0) || t >= best) continue;
+      const x = o[0] + d[0] * t, z = o[2] + d[2] * t, xi = Math.floor(x * hs), zi = Math.floor(z * hs);
+      if (xi < 0 || zi < 0 || xi >= W.hw || zi >= W.hh || idx[zi * W.hw + xi] !== i + 1) continue;
+      if (cut && this.cutLim(x, z, t) < o[1] + d[1] * t) continue;
+      best = t;
+    }
+    return best;
+  }
+  /** roofs show from above: a token's own eye view (overviews, free cameras and cutscenes stay a doll's house) */
+  roofTops() { return this.cam.mode === "eye" && !!this.selfId && this.opts.roofs !== false; }
 
   // ---------------------------------------------------------------- picking (play in 3D)
   /** the ray through a point of the canvas (nx, ny: 0..1 from the top left) */
@@ -387,8 +407,8 @@ export class PovView {
   pick(nx, ny) {
     const W = this.world; if (!W) return null;
     const {o, d} = this.rayAt(nx, ny);
-    const hit = this.marchHeights(o, d);
-    let best = null, bt = hit ? hit.t : Infinity;
+    const hit = this.marchHeights(o, d), tc = this.ceilT(o, d, {roofs: this.roofTops()});
+    let best = null, bt = Math.min(hit ? hit.t : Infinity, tc);
     for (const s0 of this.standees) {
       const s = this.shown(s0);
       if (this.cam.mode === "eye" && s.id === this.selfId) continue;
@@ -413,7 +433,7 @@ export class PovView {
       if (u > 0.12 && u < 0.88 && v > 0.04 && v < 1) { best = s; bt = ts; }
     }
     if (best) return {type: "token", id: best.id, x: best.x, z: best.z, y: best.y, ring: best.ring};
-    if (!hit) return null;
+    if (!hit || tc < hit.t) return null;   // a ceiling or a roof: nothing to click on
     const gp = W.gridPx;
     // a closed door you clicked on, or right on the line of an open one
     // (a door in the middle of a wall line may be built as wall: a click on the face right at it counts too)

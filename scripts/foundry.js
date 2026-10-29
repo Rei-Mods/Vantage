@@ -1,4 +1,5 @@
 // Vantage - reads the live Foundry scene into plain data for world.js / view.js
+import {ROOF_MATS} from "./renderer.js";
 export const MOD = "vantage";
 export const setting = k => game.settings.get(MOD, k);
 /** localize a VANTAGE.* key; with data, format it */
@@ -66,7 +67,11 @@ export function regionsOf(scene) {
     const raised = Number.isFinite(raise) && Math.abs(raise) >= 0.1;
     const skin = r.flags?.[MOD]?.skin || null;   // its own wall skin
     const sky = r.flags?.[MOD]?.sky;
-    if (!stairs && !raised && !dry && !skin && sky !== "open" && sky !== "roof") continue;
+    const num = v => v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
+    const ceil = num(r.flags?.[MOD]?.ceil);   // its own ceiling height (ft over its floor)
+    const shaped = ["shed", "gable", "hip"].includes(r.flags?.[MOD]?.roof);   // a sloped roof (its ceiling height defaults to the walls')
+    const roofMat = ROOF_MATS.includes(r.flags?.[MOD]?.roofMat) ? r.flags[MOD].roofMat : null;   // what its roof is covered with
+    if (!stairs && !raised && !dry && !skin && sky !== "open" && sky !== "roof" && !(ceil > 0) && !shaped && !roofMat) continue;
     let polys = [];
     try { polys = (r.polygons ?? []).map(p => [...p.points]); } catch (e) { /* fall back to the shapes */ }
     if (!polys.length) polys = (r.shapes ?? []).filter(s => !s.hole).map(shapePoly).filter(p => p.length >= 6);
@@ -74,7 +79,8 @@ export function regionsOf(scene) {
     out.push({id: r.id, name: r.name, stairs: stairs && !raised, raise: raised ? raise : null, dry, levels: [...(r.levels ?? [])], polys,
       look: f.look || null, front: f.front ?? null, pic: f.pic || null,   // what a raised area looks like from the side
       under: Number.isFinite(Number(f.under)) && f.under !== "" && f.under !== null ? Number(f.under) : null,   // its underside: a bridge, a roof
-      skin, sky: f.sky === "open" || f.sky === "roof" ? f.sky : null});   // ceiling here / open sky here
+      skin, sky: f.sky === "open" || f.sky === "roof" ? f.sky : null,   // ceiling here / open sky here
+      ceil: ceil > 0 ? ceil : null, ridge: num(f.ridge), roof: ["shed", "gable", "hip"].includes(f.roof) ? f.roof : "flat", roofDir: num(f.roofDir), roofMat});   // its own roof
   }
   return out;
 }
@@ -264,7 +270,8 @@ export function indoorsGuess(scene) {
 }
 
 export function buildOptions(scene = null) {
-  return {wallHeight: setting("wallHeight"), doorHeight: setting("doorHeight"), rockHeight: setting("rockHeight"),
+  const wh = Number(sceneFlag(scene, "wallHeight"));   // this scene's own wall height (Scene Config), else the world's
+  return {wallHeight: Number.isFinite(wh) && wh >= 4 ? Math.min(wh, 200) : setting("wallHeight"), doorHeight: setting("doorHeight"), rockHeight: setting("rockHeight"),
     raiseDark: boolOr(sceneFlag(scene, "raiseDark"), setting("raiseDark")), darkThreshold: setting("darkThreshold"), heightMapMax: heightMaxOf(scene),
     ceiling: sceneFlag(scene, "ceiling") ?? (() => { try { return setting("ceilings"); } catch (e) { return "auto"; } })(),
     indoors: indoorsGuess(scene)};
@@ -277,7 +284,8 @@ export function daylightOf(scene) {
 export function viewOptions(scene = null) {
   const trim = foundry.utils.Color.from(setting("trimColor") || "#3ce6ff").rgb.map(c => c * 1.05);
   const sh = setting("shadows");
-  return {trim, fogFt: setting("fogDistance"), bloom: setting("bloom") ? 1 : 0, cutaway: true,
+  const roofs = (() => { try { return setting("roofs") !== false; } catch (e) { return true; } })();
+  return {trim, fogFt: setting("fogDistance"), bloom: setting("bloom") ? 1 : 0, cutaway: true, roofs,
     shadowN: sh === "full" ? 4 : 0, ao: sh === "off" ? 0 : 1, tiltDeg: Number(setting("tiltDeg")) || 40,
     daylight: daylightOf(scene) * (sceneFlag(scene, "daylightHaze") === false ? 0 : 1), ...lookOf(scene)};
 }
@@ -286,6 +294,7 @@ export function lookOf(scene = null) {
   const get = k => { try { return setting(k); } catch (e) { return undefined; } };
   const az = Number(sceneFlag(scene, "sunAz"));
   return {skin: sceneFlag(scene, "wallSkin") ?? get("wallSkin") ?? "neon", mood: sceneFlag(scene, "mood") ?? get("mood") ?? "auto",
+    roofMat: ROOF_MATS.includes(sceneFlag(scene, "roofMat")) ? sceneFlag(scene, "roofMat") : "",
     sunAz: sceneFlag(scene, "sunAz") !== undefined && Number.isFinite(az) ? az : null,
     tint: hexRGB(sceneFlag(scene, "lightColor") ?? get("lightColor")),
     weather: weatherOf(scene), dark: Number(scene?.environment?.darknessLevel ?? scene?.darkness ?? 0) || 0};

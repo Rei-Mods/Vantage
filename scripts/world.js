@@ -303,11 +303,25 @@ export async function buildWorld(data, opts = {}) {
   const byId = new Map(all.map(l => [l.id, l]));
   const sampleLevel = (x, y) => { const xi = Math.min(hw - 1, Math.max(0, Math.round(x))), yi = Math.min(hh - 1, Math.max(0, Math.round(y))); return levelHeight[yi * hw + xi]; };
   const rad = Math.max(1, 0.25 * ppf * hs);
+  const fullWall = new Uint8Array(hw * hh);   // pixels of full-height walls (they rise to meet a higher ceiling)
+  const doorRecs = [];                        // every door, open or shut: the wall continues above it (a lintel)
+  const brush = (x1, y1, x2, y2, fn) => {
+    const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 0.5), r = Math.ceil(rad);
+    for (let s = 0; s <= steps; s++) {
+      const cx = x1 + (x2 - x1) * s / steps, cy = y1 + (y2 - y1) * s / steps;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > rad * rad + 0.25) continue;
+        const xi = Math.round(cx + dx), yi = Math.round(cy + dy);
+        if (xi < 0 || yi < 0 || xi >= hw || yi >= hh) continue;
+        fn(yi * hw + xi);
+      }
+    }
+  };
   for (const wl of data.walls ?? []) {
     const secret = wl.door === 2;
     const isDoor = (wl.door ?? 0) > 0 && !secret;   // closed secret doors look like plain wall
-    if ((wl.door ?? 0) > 0 && wl.ds === 1) continue;  // any open door
-    if (!isDoor && !secret && !wl.sight) continue;  // see-through (platform edges, windows)
+    const open = (wl.door ?? 0) > 0 && wl.ds === 1;
+    if (!(wl.door > 0) && !wl.sight) continue;  // see-through (platform edges, windows)
     const low = !isDoor && !secret && wl.low;          // limited / proximity sight (windows, foliage): a low wall
     let base = null;
     if (wl.levels?.length) {
@@ -326,21 +340,15 @@ export async function buildWorld(data, opts = {}) {
         base = Math.max(base, sampleLevel(mx, my), sampleLevel(mx + nx, my + ny), sampleLevel(mx - nx, my - ny));
       }
     }
+    if ((wl.door ?? 0) > 0 && (open || isDoor)) doorRecs.push({x1, y1, x2, y2, base});
+    if (open) continue;   // an open door: just the gap (and the lintel over it, below)
     const top = base + (isDoor ? o.doorHeight : low ? Math.min(o.lowWallHeight, o.wallHeight) : o.wallHeight);
-    const k = isDoor ? KIND.door : KIND.wall;
-    const steps = Math.ceil(len / 0.5);
-    const r = Math.ceil(rad);
-    for (let s = 0; s <= steps; s++) {
-      const cx = x1 + (x2 - x1) * s / steps, cy = y1 + (y2 - y1) * s / steps;
-      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-        if (dx * dx + dy * dy > rad * rad + 0.25) continue;
-        const xi = Math.round(cx + dx), yi = Math.round(cy + dy);
-        if (xi < 0 || yi < 0 || xi >= hw || yi >= hh) continue;
-        const idx = yi * hw + xi;
-        if (kind[idx] === KIND.rock) continue;
-        if (top > heightFt[idx]) { heightFt[idx] = top; kind[idx] = k; }
-      }
-    }
+    const k = isDoor ? KIND.door : KIND.wall, full = !isDoor && !low;
+    brush(x1, y1, x2, y2, idx => {
+      if (kind[idx] === KIND.rock) return;
+      if (top > heightFt[idx]) { heightFt[idx] = top; kind[idx] = k; }
+      if (full && heightFt[idx] <= top + 0.01) fullWall[idx] = 1;
+    });
   }
 
   // ---- raised areas that look like something: per pixel the look, which way the front faces, and the region
@@ -400,16 +408,30 @@ export async function buildWorld(data, opts = {}) {
     propAtlas = ac;
   }
 
-  // ---- ceilings: rooms closed in by walls get a flat ceiling at wall height, seen only from below (eye level / walking).
-  // "auto": a room is a place you can't reach from the edge of the map without crossing a wall or door (gaps up to ~6 ft,
-  // like doorless arches, count as closed); "all": the whole map; "none": open sky. Regions can force either way.
-  const ceilData = new Float32Array(hw * hh).fill(-1);
+  // ---- ceilings and roofs: rooms closed in by walls get a ceiling, seen from below (eye level, walking) and, in a token's
+  // eye view, as a roof from above. "auto": a room is a place you can't reach from the edge of the map without crossing a
+  // wall or door (gaps up to ~6 ft, like doorless arches, count as closed); "all": the whole map; "none": open sky. Regions
+  // can force either way, or give an area its own ceiling height and roof shape (flat, slanted, peaked, pyramid).
+  // Each ceiling is a plane: height (ft) = a + bx * x + bz * z (x, z in ft from the scene's top-left); at most 16 of them.
+  const N = hw * hh;
+  const ceilData = new Float32Array(N).fill(-1);   // ft at each point, -1 = open sky
+  const ceilIdx = new Uint8Array(N);               // which plane (1..16), 0 = open sky
+  const ceilPlanes = [];
+  const planeOf = (a, bx = 0, bz = 0) => {
+    a = Math.round(a * 100) / 100; bx = Math.round(bx * 1e4) / 1e4; bz = Math.round(bz * 1e4) / 1e4;
+    let i = ceilPlanes.findIndex(P => Math.abs(P.a - a) < 0.01 && Math.abs(P.bx - bx) < 1e-4 && Math.abs(P.bz - bz) < 1e-4);
+    if (i < 0) { if (ceilPlanes.length >= 16) return 0; ceilPlanes.push({a, bx, bz}); i = ceilPlanes.length - 1; }
+    return i + 1;
+  };
+  const planeAt = (pi, k) => { const P = ceilPlanes[pi - 1], x = (k % hw + 0.5) / hs / ppf, z = (((k / hw) | 0) + 0.5) / hs / ppf; return P.a + P.bx * x + P.bz * z; };
   const ceilMode = o.ceiling ?? "auto";
-  const N = hw * hh, roofed = new Uint8Array(N);   // 1 = gets a ceiling
-  let ceilHeights = [];   // the different ceiling heights (ft), at most 8
+  const roofed = new Uint8Array(N);   // 1 = gets a ceiling
   const rgSky = (data.regions ?? []).filter(rg => rg.polys?.length && (rg.sky === "open" || rg.sky === "roof" || (rg.dry && rg.sky !== "open")));
+  const rgRoofs = (data.regions ?? []).filter(rg => rg.polys?.length && rg.sky !== "open" && ((Number.isFinite(rg.ceil) && rg.ceil > 0) || ["shed", "gable", "hip"].includes(rg.roof)));
   let wall = null;   // auto: 1 = a full wall or a door, 2 = a low wall (window, fence) - for telling rooms from fenced yards
-  if (ceilMode !== "none" || rgSky.length) {
+  const forced = new Uint8Array(rgSky.length || rgRoofs.length ? N : 0);
+  const regRoof = new Int16Array(rgRoofs.length ? N : 0);   // which region roof (1..) covers a point
+  if (ceilMode !== "none" || rgSky.length || rgRoofs.length) {
     if (ceilMode === "all") roofed.fill(1);
     else if (ceilMode === "auto") {
       // what closes a room: walls you can't see through (and windows), doors open or shut; not invisible walls. Places
@@ -493,28 +515,34 @@ export async function buildWorld(data, opts = {}) {
       }
     }
     // regions: "suppress weather" areas and "ceiling here" get one, "open sky here" never does
-    const forced = new Uint8Array(rgSky.length ? N : 0);
     for (const rg of rgSky) {
       const v = rg.sky === "open" ? 0 : 1;
       if (v === 1 && ceilMode === "none" && rg.sky !== "roof") continue;
       for (const k of rasterPolys(rg.polys, data, hs, hw, hh)) { roofed[k] = v; if (forced.length) forced[k] = v; }
     }
 
-    // each roofed area (connected) gets one flat ceiling: its typical floor + wall height (rounded to 0.5 ft), so rooms on
-    // a height-mapped floor sit right too
-    const tops = [], q = new Int32Array(N);
+    // regions with their own ceiling height (and roof shape): always roofed, and planned below
+    rgRoofs.forEach((rg, ri) => { for (const k of rasterPolys(rg.polys, data, hs, hw, hh)) { roofed[k] = 1; forced[k] = 1; regRoof[k] = ri + 1; } });
+
+    // each roofed area (connected) gets one flat ceiling at wall height over its floor. The floor is the highest of: the
+    // typical floor (height maps), the highest Level floor inside it, and a higher Level's floor right beside it with no
+    // wall between - so a double-height hall or atrium under a gallery goes up to the top Level's roof as one ceiling
+    const q = new Int32Array(N), mark = new Int32Array(N);
     const ok = new Uint8Array(N);   // 1 = still to place
-    for (let k = 0; k < N; k++) ok[k] = roofed[k] && kind[k] !== KIND.rock && !(slabData[k * 2 + 1] > slabData[k * 2]) ? 1 : 0;
+    for (let k = 0; k < N; k++) ok[k] = roofed[k] && !(regRoof.length && regRoof[k]) && kind[k] !== KIND.rock && !(slabData[k * 2 + 1] > slabData[k * 2]) ? 1 : 0;
+    let comp = 0;
+    const isWallPx = k => kind[k] === KIND.wall || kind[k] === KIND.door || (wall && wall[k]);
     for (let k0 = 0; k0 < N; k0++) {
       if (!ok[k0]) continue;
-      let qh = 0, qt = 0; q[qt++] = k0; ok[k0] = 0;
+      comp++;
+      let qh = 0, qt = 0; q[qt++] = k0; ok[k0] = 0; mark[k0] = comp;
       while (qh < qt) {
         const k = q[qh++], x = k % hw;
         let j;
-        if (x > 0 && ok[j = k - 1]) { ok[j] = 0; q[qt++] = j; }
-        if (x < hw - 1 && ok[j = k + 1]) { ok[j] = 0; q[qt++] = j; }
-        if (k >= hw && ok[j = k - hw]) { ok[j] = 0; q[qt++] = j; }
-        if (k < N - hw && ok[j = k + hw]) { ok[j] = 0; q[qt++] = j; }
+        if (x > 0 && ok[j = k - 1]) { ok[j] = 0; mark[j] = comp; q[qt++] = j; }
+        if (x < hw - 1 && ok[j = k + 1]) { ok[j] = 0; mark[j] = comp; q[qt++] = j; }
+        if (k >= hw && ok[j = k - hw]) { ok[j] = 0; mark[j] = comp; q[qt++] = j; }
+        if (k < N - hw && ok[j = k + hw]) { ok[j] = 0; mark[j] = comp; q[qt++] = j; }
       }
       // closed in mostly by low walls (a fenced yard, a ring of hedges or terrain walls), not by real walls: no ceiling
       if (wall && o.indoors !== "in") {   // (on an interior map a cage of bars is still under the roof)
@@ -523,25 +551,135 @@ export async function buildWorld(data, opts = {}) {
         if (low > full && !forcedAny) continue;
       }
       const fl = [], step = Math.max(1, Math.floor(qt / 4096));
+      let lvTop = -Infinity, ring = -Infinity;
       for (let i = 0; i < qt; i += step) { const k = q[i]; if (kind[k] !== KIND.wall && kind[k] !== KIND.door && kind[k] !== KIND.prop) fl.push(levelHeight[k]); }
+      for (let i = 0; i < qt; i++) {
+        const k = q[i], lb = coverSet[owner[k]]?.bottom; if (lb > lvTop) lvTop = lb;
+        const x = k % hw;
+        for (const j of [x > 0 ? k - 1 : -1, x < hw - 1 ? k + 1 : -1, k >= hw ? k - hw : -1, k < N - hw ? k + hw : -1]) {
+          if (j < 0 || mark[j] === comp || isWallPx(j) || kind[j] === KIND.rock) continue;
+          if (coverHeight[j] > ring) ring = coverHeight[j];
+        }
+      }
       fl.sort((a, b) => a - b);
-      const floorFt = fl.length ? fl[fl.length >> 1] : (coverSet[owner[k0]]?.bottom ?? baseElev);
-      const top = Math.fround(Math.round((floorFt + o.wallHeight) * 2) / 2);   // as stored
-      if (!tops.includes(top)) { if (tops.length >= 8) continue; tops.push(top); }
+      const base0 = Math.max(fl.length ? fl[fl.length >> 1] : (coverSet[owner[k0]]?.bottom ?? baseElev), lvTop);
+      const floorFt = Math.max(base0, ring);
+      const top = Math.round((floorFt + o.wallHeight) * 2) / 2;
+      const pi = planeOf(top); if (!pi) continue;
       for (let i = 0; i < qt; i++) {
         const k = q[i];
         if (heightFt[k] >= top - 0.01 && kind[k] !== KIND.wall && kind[k] !== KIND.door) continue;   // something tall already reaches it
-        ceilData[k] = top;
+        ceilData[k] = top; ceilIdx[k] = pi;
+      }
+      // an atrium (open up to a higher Level beside it): the same roof goes on over that Level's floor in the room, so
+      // looking up past a gallery's edge shows the roof, not the sky
+      if (ring > base0 + 0.5) {
+        let gh = 0, gt = 0;
+        const grow = j => {   // (into the walls around it too, so they rise to meet it, but not past them)
+          if (j < 0 || ceilIdx[j] || !roofed[j] || slabCeil[j] !== 1 || kind[j] === KIND.rock || mark[j] === comp) return;
+          mark[j] = comp; ceilData[j] = top; ceilIdx[j] = pi; if (!isWallPx(j)) q[gt++] = j;
+        };
+        const seeds = []; for (let i = 0; i < qt; i++) seeds.push(q[i]);
+        for (const k of seeds) { const x = k % hw; grow(x > 0 ? k - 1 : -1); grow(x < hw - 1 ? k + 1 : -1); grow(k >= hw ? k - hw : -1); grow(k < N - hw ? k + hw : -1); }
+        while (gh < gt) { const k = q[gh++], x = k % hw; grow(x > 0 ? k - 1 : -1); grow(x < hw - 1 ? k + 1 : -1); grow(k >= hw ? k - hw : -1); grow(k < N - hw ? k + hw : -1); }
       }
     }
-    ceilHeights = tops;
+
+    // region roofs: a ceiling height over the region's floor; slanted (rises toward a side), peaked (a ridge down the middle,
+    // along the longer side unless set) or pyramid (four faces up to a point)
+    rgRoofs.forEach((rg, ri) => {
+      const px = []; for (let k = 0; k < N; k++) if (regRoof[k] === ri + 1) px.push(k);
+      if (!px.length) return;
+      const fl = []; let lvTop = -Infinity, x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (const k of px) {
+        if (kind[k] !== KIND.wall && kind[k] !== KIND.door && kind[k] !== KIND.prop) fl.push(levelHeight[k]);
+        const lb = coverSet[owner[k]]?.bottom; if (lb > lvTop) lvTop = lb;
+        const x = (k % hw + 0.5) / hs / ppf, z = (((k / hw) | 0) + 0.5) / hs / ppf;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z;
+      }
+      fl.sort((a, b) => a - b);
+      const floorFt = Math.max(fl.length ? fl[fl.length >> 1] : baseElev, Number.isFinite(lvTop) ? lvTop : -Infinity);
+      // the eaves at the ceiling height (empty: the walls'), the peak at Peak height (empty: half again as high)
+      const ceil = Number.isFinite(rg.ceil) && rg.ceil > 0 ? rg.ceil : o.wallHeight, sloped = ["shed", "gable", "hip"].includes(rg.roof);
+      const eaves = floorFt + ceil, peak = floorFt + (Number.isFinite(rg.ridge) && rg.ridge > ceil ? rg.ridge : sloped ? ceil * 1.5 : ceil);
+      const rise = peak - eaves, W2 = Math.max(0.5, x1 - x0), H2 = Math.max(0.5, z1 - z0), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      const dir = rg.roofDir === null || rg.roofDir === undefined || rg.roofDir === "" ? null : Number(rg.roofDir);
+      let planes;   // [{a, bx, bz, pick(x, z)}]
+      if (rg.roof === "shed" && rise > 0) {
+        const d = dir ?? 0;   // the high side (compass): 0 = top of the map
+        const pl = d === 90 ? planeOf(eaves - rise * x0 / W2, rise / W2, 0) : d === 270 ? planeOf(eaves + rise * x1 / W2, -rise / W2, 0)
+          : d === 180 ? planeOf(eaves - rise * z0 / H2, 0, rise / H2) : planeOf(eaves + rise * z1 / H2, 0, -rise / H2);
+        planes = () => pl;
+      } else if (rg.roof === "gable" && rise > 0) {
+        const alongZ = dir === null ? H2 >= W2 : (dir === 0 || dir === 180);   // the ridge runs top-bottom
+        if (alongZ) { const s = rise / (W2 / 2), L = planeOf(peak - s * cx, s, 0), R = planeOf(peak + s * cx, -s, 0); planes = (x) => x < cx ? L : R; }
+        else { const s = rise / (H2 / 2), T = planeOf(peak - s * cz, 0, s), B = planeOf(peak + s * cz, 0, -s); planes = (x, z) => z < cz ? T : B; }
+      } else if (rg.roof === "hip" && rise > 0) {
+        const sx = rise / (W2 / 2), sz = rise / (H2 / 2);
+        const L = planeOf(peak - sx * cx, sx, 0), R = planeOf(peak + sx * cx, -sx, 0), T = planeOf(peak - sz * cz, 0, sz), B = planeOf(peak + sz * cz, 0, -sz);
+        planes = (x, z) => { const ux = Math.abs(x - cx) / (W2 / 2), uz = Math.abs(z - cz) / (H2 / 2); return ux > uz ? (x < cx ? L : R) : (z < cz ? T : B); };
+      } else { const pl = planeOf(eaves); planes = () => pl; }
+      for (const k of px) {
+        if (slabData[k * 2 + 1] > slabData[k * 2]) continue;   // a higher Level's floor over it comes first
+        const x = (k % hw + 0.5) / hs / ppf, z = (((k / hw) | 0) + 0.5) / hs / ppf, pi = planes(x, z);
+        if (!pi) continue;
+        const h = planeAt(pi, k);
+        if (heightFt[k] >= h - 0.01 && kind[k] !== KIND.wall && kind[k] !== KIND.door) continue;
+        ceilData[k] = h; ceilIdx[k] = pi;
+      }
+    });
+
+    // walls rise to meet a ceiling that's higher than they are (a tall hall, an atrium, the gable ends of a peaked roof), and
+    // a higher Level's floor a little over their top; the highest one within the wall's thickness, so the whole wall rises
+    const R = Math.ceil(rad) + 2;
+    for (let k = 0; k < N; k++) {
+      if (!fullWall[k] || kind[k] !== KIND.wall) continue;
+      const h0 = heightFt[k];
+      if (h0 < levelHeight[k] + o.wallHeight - 0.6) continue;   // not a full-height wall (a window, a fence)
+      const x = k % hw, y = (k / hw) | 0; let m = -1;
+      for (let yy = Math.max(0, y - R); yy <= Math.min(hh - 1, y + R); yy++) for (let xx = Math.max(0, x - R); xx <= Math.min(hw - 1, x + R); xx++) {
+        const j = yy * hw + xx;
+        if (ceilIdx[j] && ceilData[j] > m) m = ceilData[j];
+        if (slabCeil[j] === 1 && slabData[j * 2] > h0 && slabData[j * 2] - h0 < 6 && slabData[j * 2 + 1] > m) m = slabData[j * 2 + 1];
+      }
+      if (m > h0 + 0.25) heightFt[k] = m;
+    }
+  }
+  const ceilHeights = ceilPlanes.map(P => P.a);   // (flat ones; for anything that only wants the levels)
+  // what regions' roofs are covered with (0 = the scene's / what suits the walls, else ROOF_MATS index + 1)
+  let roofMatPx = null;
+  for (const rg of data.regions ?? []) {
+    const m = (o.roofMats ?? []).indexOf(rg.roofMat); if (m < 0 || !rg.polys?.length) continue;
+    roofMatPx ??= new Uint8Array(N);
+    for (const k of rasterPolys(rg.polys, data, hs, hw, hh)) roofMatPx[k] = m + 1;
+  }
+
+  // ---- lintels: the wall carries on over every door (open or shut) up to the wall's top or the ceiling
+  for (const dr of doorRecs) {
+    const top0 = dr.base + o.doorHeight;
+    const px = []; brush(dr.x1, dr.y1, dr.x2, dr.y2, k => px.push(k));
+    // only in a wall: a door between full walls, or under a ceiling (not a gate in a fence)
+    let inWall = false, roofedDoor = false;
+    // the full wall at each end of the door: the lintel goes up as high as it does (walls risen to a tall ceiling too)
+    const nearFull = (cx, cy) => { let m = -Infinity; for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const xi = Math.round(cx + dx), yi = Math.round(cy + dy); if (xi >= 0 && yi >= 0 && xi < hw && yi < hh && fullWall[yi * hw + xi] && heightFt[yi * hw + xi] > m) m = heightFt[yi * hw + xi]; } return m; };
+    const L = Math.hypot(dr.x2 - dr.x1, dr.y2 - dr.y1) || 1, ex = (dr.x2 - dr.x1) / L * (rad + 2), ey = (dr.y2 - dr.y1) / L * (rad + 2);
+    const endTop = Math.max(nearFull(dr.x1 - ex, dr.y1 - ey), nearFull(dr.x2 + ex, dr.y2 + ey));
+    inWall = endTop > -Infinity;
+    for (const k of px) if (ceilIdx[k]) { roofedDoor = true; break; }
+    if (!inWall && !roofedDoor) continue;
+    for (const k of px) {
+      if (kind[k] === KIND.rock) continue;
+      const top = Math.max(dr.base + o.wallHeight, ceilIdx[k] ? ceilData[k] : -Infinity, Math.min(endTop, dr.base + 200));
+      if (top <= top0 + 0.25) continue;
+      addSlab(k, top0, top); slabCeil[k] = 2;   // (under a higher Level's floor: joins it)
+    }
   }
 
   // ---- where weather can't fall (ft): under a higher floor (also one hidden over the viewer's head), and in regions
   // with a "suppress weather" behaviour (whole column)
   const shelterFt = coverHeight.slice();
   if (hasSlabs) for (let k = 0; k < hw * hh; k++) if (slabData[k * 2 + 1] > slabData[k * 2]) shelterFt[k] = Math.max(shelterFt[k], slabData[k * 2 + 1]);
-  if (ceilHeights.length) for (let k = 0; k < hw * hh; k++) if (ceilData[k] > shelterFt[k]) shelterFt[k] = ceilData[k];
+  if (ceilPlanes.length) for (let k = 0; k < hw * hh; k++) if (ceilData[k] > shelterFt[k]) shelterFt[k] = ceilData[k];
   for (const rg of data.regions ?? []) {
     if (!rg.dry || !rg.polys?.length) continue;
     for (const k of rasterPolys(rg.polys, data, hs, hw, hh)) shelterFt[k] = 1e4;
@@ -567,7 +705,7 @@ export async function buildWorld(data, opts = {}) {
     if (hasSlabs && slabData[k * 2 + 1] > slabData[k * 2] && slabData[k * 2 + 1] > maxH) maxH = slabData[k * 2 + 1];
   }
   return {W, H, ppf, gridPx: data.gridPx ?? ppf * 5, ox: data.ox, oy: data.oy, hs, hw, hh, floorCanvas: floor, heightData, heightFt, levelHeight, coverHeight,
-    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, shelterFt, propData, propInfo, propAtlas, slabData, slabCeil, ceilData, ceilHeights, hasSlabs, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
+    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, shelterFt, propData, propInfo, propAtlas, slabData, slabCeil, ceilData, ceilIdx, ceilPlanes, ceilHeights, roofMatPx, hasSlabs, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
     viewElev: view?.bottom ?? baseElev,   // the floor of the level being viewed (ft): what an overview looks at
     floorLayers, hasVideo: floorLayers.some(l => isVideo(l.media)), maxTex: opts.maxTex,
     levelIds: new Set(set.map(l => l.id))};

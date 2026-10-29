@@ -1,6 +1,6 @@
 // Vantage - see the battlemap in 3D from a token's eyes (or an overview), and show it to the players
 import {MOD, FIGURES, figureOf, L, viewOptions, templatesOf} from "./foundry.js";
-import {WALL_SKINS, MOODS, WEATHER} from "./renderer.js";
+import {WALL_SKINS, MOODS, WEATHER, ROOF_MATS} from "./renderer.js";
 import {PROP_LOOKS} from "./world.js";
 import {prepDialog} from "./prep.js";
 import {PovWindow, PovViewer, onSocket, sendSnapshot} from "./app.js";
@@ -15,6 +15,7 @@ Hooks.once("init", () => {
   reg("doorHeight", {type: Number, default: 10, range: {min: 4, max: 30, step: 1}});
   reg("raiseDark", {type: Boolean, default: true});
   reg("ceilings", {type: String, default: "auto", choices: choices("ceilings", {auto: "auto", all: "all", none: "none"}), onChange: () => PovWindow.instance?.rebuild()});
+  reg("roofs", {type: Boolean, default: true, onChange: () => relook()});
   reg("rockHeight", {type: Number, default: 35, range: {min: 0, max: 120, step: 1}});
   reg("darkThreshold", {type: Number, default: 26, range: {min: 5, max: 80, step: 1}});
   reg("trimColor", {type: String, default: "#3ce6ff"});
@@ -81,6 +82,9 @@ Hooks.on("renderRegionConfig", (app, html) => {
   const sky = f.sky === "open" || f.sky === "roof" ? f.sky : "";
   const look = f.look || "plain", front = f.front === null || f.front === undefined || f.front === "" ? "" : String(f.front);
   const fronts = [["", "Region.FrontAuto"], ["0", "Region.FrontTop"], ["90", "Region.FrontRight"], ["180", "Region.FrontBottom"], ["270", "Region.FrontLeft"]];
+  const numOr = x => x === null || x === undefined || x === "" || !Number.isFinite(Number(x)) ? "" : Number(x);
+  const roof = ["shed", "gable", "hip"].includes(f.roof) ? f.roof : "flat", roofDir = numOr(f.roofDir) === "" ? "" : String(f.roofDir);
+  const roofDirs = [["", "Region.RoofDirAuto"], ["0", "Region.FrontTop"], ["90", "Region.FrontRight"], ["180", "Region.FrontBottom"], ["270", "Region.FrontLeft"]];
   const fs = document.createElement("fieldset");
   fs.className = "vtg-raise";
   fs.innerHTML = `<legend><i class="fa-solid fa-vr-cardboard"></i> ${L("Region.Legend")}</legend>
@@ -95,6 +99,20 @@ Hooks.on("renderRegionConfig", (app, html) => {
     <div class="form-group"><label>${L("Region.Sky")}</label>
       <div class="form-fields"><select name="flags.${MOD}.sky">${[["", "Region.SkyAuto"], ["roof", "Region.SkyRoof"], ["open", "Region.SkyOpen"]].map(([k, l]) => `<option value="${k}" ${k === sky ? "selected" : ""}>${escA(L(l))}</option>`).join("")}</select></div>
       <p class="hint">${L("Region.SkyHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Region.CeilHeight")}</label>
+      <div class="form-fields"><input type="number" name="flags.${MOD}.ceil" step="0.5" min="4" max="200" value="${numOr(f.ceil)}" placeholder="${escA(L("Region.CeilAuto"))}"></div>
+      <p class="hint">${L("Region.CeilHeightHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Region.Roof")}</label>
+      <div class="form-fields"><select name="flags.${MOD}.roof">${["flat", "shed", "gable", "hip"].map(k => `<option value="${k}" ${k === roof ? "selected" : ""}>${escA(L(`Region.Roof_${k}`))}</option>`).join("")}</select>
+        <input type="number" name="flags.${MOD}.ridge" step="0.5" min="4" max="300" value="${numOr(f.ridge)}" placeholder="${escA(L("Region.RidgePlaceholder"))}" title="${escA(L("Region.Ridge"))}">
+        <select name="flags.${MOD}.roofDir" data-dtype="String" title="${escA(L("Region.RoofDir"))}">${roofDirs.map(([k, l]) => `<option value="${k}" ${k === roofDir ? "selected" : ""}>${escA(L(l))}</option>`).join("")}</select></div>
+      <p class="hint">${L("Region.RoofHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Region.RoofMat")}</label>
+      <div class="form-fields"><select name="flags.${MOD}.roofMat"><option value="">${escA(L("Region.RoofMatScene"))}</option>${ROOF_MATS.map(k => `<option value="${k}" ${k === (f.roofMat ?? "") ? "selected" : ""}>${escA(L(`RoofMats.${k}`))}</option>`).join("")}</select></div>
+      <p class="hint">${L("Region.RoofMatHint")}</p>
     </div>
     <div class="form-group"><label>${L("Region.Skin")}</label>
       <div class="form-fields"><select name="flags.${MOD}.skin"><option value="">${escA(L("Region.SkinScene"))}</option>${WALL_SKINS.map(k => `<option value="${k}" ${k === (f.skin ?? "") ? "selected" : ""}>${escA(L(`Skins.${k}`))}</option>`).join("")}</select></div>
@@ -128,6 +146,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const moodSel = [opt("", L("Scene.UseWorld"), f.mood), ...Object.keys(MOODS).map(k => opt(k, L(`Moods.${k}`), f.mood))].join("");
   const az = Number.isFinite(Number(f.sunAz)) && f.sunAz !== "" && f.sunAz != null ? f.sunAz : "";
   const lc = /^#[0-9a-f]{6}$/i.test(f.lightColor ?? "") ? f.lightColor : "";
+  const numOr = x => x === null || x === undefined || x === "" || !Number.isFinite(Number(x)) ? "" : Number(x);
   const ceilSel = [opt("", L("Scene.UseWorld"), f.ceiling), ...["auto", "all", "none"].map(k => opt(k, L(`Settings.ceilings.Choices.${k}`), f.ceiling))].join("");
   const wxSel = [opt("", L("Scene.WeatherFollow"), f.weather), ...Object.keys(WEATHER).map(k => opt(k, L(`Weather.${k}`), f.weather))].join("");
   const fs = document.createElement("fieldset");
@@ -147,6 +166,14 @@ Hooks.on("renderSceneConfig", (app, html) => {
     <div class="form-group"><label>${L("Scene.WallSkin")}</label>
       <div class="form-fields"><select name="flags.${MOD}.wallSkin">${skinSel}</select></div>
       <p class="hint">${L("Scene.WallSkinHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Scene.RoofMat")}</label>
+      <div class="form-fields"><select name="flags.${MOD}.roofMat">${[opt("", L("RoofMats.auto"), f.roofMat), ...ROOF_MATS.map(k => opt(k, L(`RoofMats.${k}`), f.roofMat))].join("")}</select></div>
+      <p class="hint">${L("Scene.RoofMatHint")}</p>
+    </div>
+    <div class="form-group"><label>${L("Scene.WallHeight")}</label>
+      <div class="form-fields"><input type="number" name="flags.${MOD}.wallHeight" step="0.5" min="4" max="200" value="${numOr(f.wallHeight)}" placeholder="${escA(L("Scene.UseWorld"))}"></div>
+      <p class="hint">${L("Scene.WallHeightHint")}</p>
     </div>
     <div class="form-group"><label>${L("Scene.Ceiling")}</label>
       <div class="form-fields"><select name="flags.${MOD}.ceiling">${ceilSel}</select></div>

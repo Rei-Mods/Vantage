@@ -11,7 +11,15 @@
       "ceilings": {
         "Name": "Ceilings",
         "Hint": "Rooms get a ceiling at wall height, so looking up indoors shows a ceiling (in the wall skin's material) instead of the sky, and the sun and rain stay outside. Automatic = places closed in by walls and doors (an open arch up to about 6 ft still counts as closed), Suppress Weather regions, and the whole map when its name says it is an interior (a club, a tavern, a dungeon) but its outer walls aren't drawn. Scenes and regions can override it.",
-        "Choices": {"auto": "Automatic (rooms closed in by walls)", "all": "The whole map is indoors", "none": "Open sky (no ceilings)"}
+        "Choices": {
+          "auto": "Automatic (rooms closed in by walls)",
+          "all": "The whole map is indoors",
+          "none": "Open sky (no ceilings)"
+        }
+      },
+      "roofs": {
+        "Name": "Roofs from outside",
+        "Hint": "In a token's eye view, buildings show their roofs from above (from a balcony, a rooftop, a hill), in a covering that suits the walls: tiles, slate, shingles, thatch, metal. Overviews, the live overview and cutscenes always look in like a doll's house."
       },
       "doorHeight": {
         "Name": "Door height (ft)",
@@ -145,6 +153,22 @@
       "SkyRoof": "A ceiling",
       "SkyOpen": "Open sky",
       "SkyHint": "Force a ceiling over this area (a covered porch, a tent, a room whose walls leak) or keep it open to the sky (a walled courtyard, a roofless ruin).",
+      "CeilHeight": "Ceiling height (ft)",
+      "CeilAuto": "Automatic",
+      "CeilHeightHint": "Give this area its own ceiling, this many feet over its floor: a tall hall, a cathedral, a warehouse, a hangar. Walls around it rise to meet it. Empty = the scene's wall height (on a map with levels, a hall open to an upper floor goes up to that floor's roof).",
+      "Roof": "Roof shape",
+      "Roof_flat": "Flat",
+      "Roof_shed": "Slanted (one slope)",
+      "Roof_gable": "Peaked (two slopes)",
+      "Roof_hip": "Pyramid (four slopes)",
+      "Ridge": "Peak height (ft over the floor)",
+      "RidgePlaceholder": "Peak (ft)",
+      "RoofDir": "Which way it goes",
+      "RoofDirAuto": "Automatic",
+      "RoofHint": "The ceiling's shape. Its ceiling height is the low edge (the eaves) and Peak height the top (empty = half again as high). Slanted: rises toward the side you pick. Peaked: the ridge runs along the longer side, or up and down the map for Top/Bottom and across it for Left/Right. Inside you see the sloped ceiling; from outside, in a token's eye view, the roof, in a covering that suits the walls.",
+      "RoofMat": "Roof covering",
+      "RoofMatScene": "The scene's",
+      "RoofMatHint": "What this area's roof is covered with, seen from outside: thatch on a stone cottage, slate on a timber house. Empty = the scene's choice.",
       "Skin": "Wall skin here",
       "SkinScene": "The scene's skin",
       "SkinHint": "Walls, ceilings and raised areas inside this region wear this skin: a brick building on a neon street, a wooden cabin in a stone keep. It works with or without a height."
@@ -204,6 +228,10 @@
       "Off": "Off",
       "WallSkin": "Wall skin",
       "WallSkinHint": "What this scene's walls are made of (ceilings match). Empty = the world setting.",
+      "RoofMat": "Roof covering",
+      "RoofMatHint": "What roofs are covered with, seen from outside in a token's eye view. Automatic picks one that suits the wall skin (slate for stone, shingles for timber, metal for sci-fi). Regions can pick their own.",
+      "WallHeight": "Wall height (ft)",
+      "WallHeightHint": "How tall this scene's walls (and so its rooms' ceilings) are: 24 for a nightclub with a high ceiling, 40 for a warehouse. Empty = the world setting.",
       "Ceiling": "Ceilings",
       "CeilingHint": "Indoors, looking up shows a ceiling instead of the sky. Automatic finds the rooms closed in by walls (and treats maps named like interiors as indoors); pick The whole map for an interior whose outer walls aren't drawn, or Open sky for an outdoor map. Regions can add or remove a ceiling (Region Config > Vantage). Empty = the world setting.",
       "Mood": "Lighting mood",
@@ -231,7 +259,39 @@
       "marble": "Marble and gold",
       "hedge": "Hedge",
       "sandstone": "Sandstone",
-      "map": "Match the map (its own colours)"
+      "map": "Match the map (its own colours)",
+      "glass": "Glass curtain wall (modern)",
+      "tile": "Tiles (washrooms, metro)",
+      "graffiti": "Graffiti concrete (street)",
+      "cinder": "Cinder block",
+      "wallpaper": "Wallpaper and wainscot",
+      "panel": "Starship panels (sci-fi)",
+      "plywood": "Boarded-up plywood",
+      "neonbrick": "Neon alley brick (cyberpunk)",
+      "padded": "Padded leather (lounges, clubs)",
+      "ledwall": "LED video wall",
+      "clinic": "Clinic (hospitals, labs)",
+      "container": "Shipping containers",
+      "chrome": "Polished chrome",
+      "carbon": "Carbon fibre",
+      "holo": "Holographic grid (sci-fi)",
+      "pipes": "Pipes and conduits (industrial)",
+      "rust": "Rusted plate (post-apocalyptic)",
+      "biotech": "Biotech (alien, grown)",
+      "hex": "Hex plating (sci-fi)",
+      "sigil": "Arcane runes (glowing wards)",
+      "shoji": "Shoji screens",
+      "ruins": "Mossy ruins",
+      "dwarven": "Dwarven halls",
+      "elven": "Elven living wood",
+      "crystal": "Crystal cave",
+      "cryo": "Cryo (frosted panels)",
+      "server": "Server racks",
+      "forcefield": "Force field (energy wall)",
+      "hangar": "Hangar bulkhead",
+      "artdeco": "Art deco (black and gold)",
+      "reactor": "Reactor (glowing coolant)",
+      "viewport": "Starship viewports (space outside)"
     },
     "Moods": {
       "auto": "Automatic (the map's own light)",
@@ -357,6 +417,15 @@
       "Undone": "Vantage: removed {n} regions from the earlier prep, and its height map.",
       "Yes": "yes",
       "No": "no"
+    },
+    "RoofMats": {
+      "auto": "Automatic (suits the walls)",
+      "metal": "Metal (standing seams)",
+      "tiles": "Clay tiles",
+      "slate": "Slate",
+      "shingles": "Wood shingles",
+      "thatch": "Thatch",
+      "corrugated": "Corrugated sheet"
     }
   }
 }

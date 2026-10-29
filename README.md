@@ -49,29 +49,29 @@ It only draws while the camera moves (or something on the map animates), so it c
 <p align="center"><img src="docs/images/rise-up.gif" width="80%" alt="A flat arcade map rising into 3D: walls, cabinets and tables grow out of the map art"></p>
 <p align="center"><sub>Everything here comes from the scene's own walls, regions and art (the rise is just for show).</sub></p>
 
-- **Walls and doors rise up.** Sight-blocking walls become 12 ft walls in the [wall skin](#wall-skins-make-the-walls-fit-your-map) you pick, and closed doors become 10 ft doors. Secret doors look like plain wall. Open doors and see-through walls stay open, and windows, glass and foliage (limited sight) become low walls you can see over.
+- **Walls and doors rise up.** Sight-blocking walls become 12 ft walls (or the scene's own *Wall height*) in the [wall skin](#wall-skins-make-the-walls-fit-your-map) you pick, and closed doors become 10 ft doors. Secret doors look like plain wall. Open doors and see-through walls stay open, and windows, glass and foliage (limited sight) become low walls you can see over.
 - **Foundry v14 Levels.** Each level's art rises to its elevation. The view shows the token's level plus the levels it can see. A token standing under a higher floor sees the room it's in, not the inside of the floor above.
 - **Stairs.** Every Region with a *Change Level* behaviour becomes a staircase between its two floors, with glowing step edges. Ladders (very steep, short regions) stay flat.
 - **Rock.** Very dark parts of the map (cave walls, out-of-bounds) can become solid rock. You can turn this off per world or per scene.
-- **Ceilings.** Indoors, looking up shows a ceiling, not the sky. See [Ceilings](#ceilings-indoors-has-a-roof).
+- **Ceilings and roofs.** Indoors, looking up shows a ceiling, not the sky; tall halls, sloped and peaked roofs, atriums open to an upper Level, and roofs seen from outside. See [Ceilings and roofs](#ceilings-and-roofs).
 - **Lights.** Scene lights glow on walls and floors. Darkness sources don't glow.
 - **Live updates.** Moving tokens, opening doors, or editing walls, lights, regions or levels updates the 3D view automatically.
 
 ### Wall skins: make the walls fit your map
-<p align="center"><img src="docs/images/wall-skins.gif" width="80%" alt="The same arcade corner cycling through every wall skin: neon panels, concrete, brick, castle stone, rough rock, wood, timber and plaster, steel, scrap, marble, hedge, sandstone"></p>
+<p align="center"><img src="docs/images/wall-skins.gif" width="80%" alt="The same room corner cycling through the wall skins, from neon panels and LED walls to brick, ruins and elven wood"></p>
 
-Pick what walls and doors are made of. There are 12 materials:
+Pick what walls and doors are made of. There are 45 skins, mostly sci-fi and modern:
 
-- **Neon panels**: the default sci-fi look, with a glowing trim.
-- **Concrete**, **Riveted steel** (with hazard stripes along the foot) and **Corrugated scrap**.
-- **Brick**, **Castle stone**, **Rough rock** (caves and mines) and **Sandstone**.
-- **Wooden planks**, **Timber & plaster**, **Marble & gold** and **Hedge**.
+- **Sci-fi (16):** Neon panels (the default, with a glowing trim), Riveted steel, Starship panels, Holographic grid, Hex plating, Biotech, Carbon fibre, Polished chrome, LED video wall, Neon alley brick, Cryo, Server racks, Force field, Hangar bulkhead, Reactor and Starship viewports.
+- **Modern and modern fantasy (16):** Concrete, Corrugated scrap, Glass curtain wall, Tiles, Graffiti concrete, Cinder block, Wallpaper and wainscot, Boarded-up plywood, Padded leather, Clinic, Shipping containers, Rusted plate, Pipes and conduits, Arcane runes (glowing wards), Shoji screens and Art deco.
+- **High fantasy (12):** Brick, Castle stone, Rough rock, Wooden planks, Timber & plaster, Marble & gold, Hedge, Sandstone, Mossy ruins, Dwarven halls, Elven living wood and Crystal cave. Brick, wood, rock and marble suit modern maps too.
+- **Match the map** builds the walls from the colours of the floor next to them.
 
-You can also pick **Match the map**, which builds the walls from the colours of the floor next to them.
+What glows keeps glowing in the dark: neon tubes, LED walls, coolant, runes, crystals, a lit window here and there.
 
-Set a default in the world settings, and give any scene its own skin in **Scene Config → Vantage**. [Ceilings](#ceilings-indoors-has-a-roof) are made of it too. Doors match the skin: wooden doors in brick and stone, a gate in a hedge, hazard stripes on steel. Raised areas use the same material for the natural skins (a stone dais, a wooden counter). With the sci-fi skins they stay plain metal, so consoles still look like consoles.
+Set a default in the world settings, and give any scene its own skin in **Scene Config → Vantage**. [Ceilings and roofs](#ceilings-and-roofs) are made of it too. Doors match the skin: wooden doors in brick and stone, a gate in a hedge, a roller shutter in graffiti, a mesh door on a server room, hazard stripes on steel. Raised areas use the same material for the natural skins (a stone dais, a wooden counter, padded booths, a stack of containers). With the sci-fi skins they stay plain metal, so consoles still look like consoles.
 
-<p align="center"><img src="docs/images/wall-skins.jpg" width="100%" alt="The same arcade corner with each of the 12 wall skins, labelled"></p>
+<p align="center"><img src="docs/images/wall-skins.jpg" width="100%" alt="The same room corner with each of the 45 wall skins, labelled"></p>
 
 **Per region**: a Region's **Wall skin here** (Region Config → Vantage) dresses the walls inside it differently, so a brick building can stand on a neon street, or a wooden cabin inside a stone keep.
 
@@ -118,17 +118,23 @@ With *Shadows* on Full, the sun or moon casts real shadows from walls, raised ar
 
 <p align="center"><img src="docs/images/lighting-moods.jpg" width="100%" alt="Every mood side by side on the canyon, arcade and club maps, plus two custom light colours"></p>
 
-### Ceilings: indoors has a roof
-<p align="center"><img src="docs/images/ceiling-hall.jpg" width="80%" alt="Eye view in a nightclub: a dark panelled ceiling with glowing light strips over the dance floor"></p>
+### Ceilings and roofs
+<p align="center"><img src="docs/images/ceiling-hall.jpg" width="80%" alt="Eye view in a nightclub: a dark panelled ceiling with glowing light strips high over the dance floor"></p>
 
-Rooms get a flat ceiling at wall height. You see it when you look up at eye level, or in a low overview inside a room. From above, the overview stays an open doll's house. The sun and moon don't shine in through the ceiling, but they still come in through doors and windows. Rain and snow stay outside.
+Rooms get a ceiling. You see it when you look up at eye level, or in a low overview inside a room. From above, the overview stays an open doll's house. The sun and moon don't shine in through the ceiling, but they still come in through doors and windows. Rain and snow stay outside.
 
 - **Automatic** (the default) finds rooms closed in by walls and doors, open or shut. A doorless arch up to about 6 ft wide still counts as closed. Suppress Weather regions get a ceiling too. Some interior maps don't draw their outer walls, because the map's edge is the building's wall. If the map's name says it's an interior (a club, a tavern, a dungeon), Vantage roofs the whole map.
 - **The whole map is indoors** or **Open sky** per world (settings) or per scene (**Scene Config → Vantage → Ceilings**).
 - **Per region**: **Ceiling here** (Region Config → Vantage) adds a ceiling (a covered porch, a tent) or keeps an area open (a walled courtyard, a roofless ruin).
-- **They match the walls.** Ceilings are made of the [wall skin](#wall-skins-make-the-walls-fit-your-map): neon panels with glowing light strips, concrete slabs, brick, stone, boards on joists, plaster between timber beams, steel plates on girders, marble with gold, or the map's own colours. A region's *Wall skin here* dresses its ceiling too. The floor of a higher Level, seen from below, wears the skin as well.
+- **How high.** At the wall height over the room's floor. A scene can have its own **Wall height** (Scene Config → Vantage): 24 ft for a nightclub with a high ceiling, 40 ft for a warehouse. A region's **Ceiling height** gives one area its own (a tall hall, a cathedral, a hangar), and the walls around it rise to meet it.
+- **Roof shapes.** A region's **Roof shape**: **Flat**, **Slanted** (one slope, rising toward the side you pick), **Peaked** (two slopes, with the walls rising into gable ends) or **Pyramid** (four slopes to a point). The ceiling height is the eaves and **Peak height** the top (empty = half again as high). A peaked ridge runs along the longer side unless you pick a direction. Inside, you see the sloped ceiling.
+- **Levels.** Under a higher Level's floor, that floor is the ceiling. A hall open to an upper floor (an atrium, or a double-height hall beside a gallery) goes up to the top Level's roof as one ceiling, over the gallery too, and its walls rise with it. Walls that stop just short of the floor above rise to meet it, so there is no gap.
+- **Over doors.** The wall carries on over every door up to the ceiling, so a doorway is a door-sized hole in the wall, not a slot to the roof.
+- **Roofs from outside.** In a token's eye view (from a balcony, a rooftop or a hill), buildings show their roofs. A sloped roof gets a covering that suits the walls: slate on stone, shingles on timber, clay tiles on brick, thatch on hedge, corrugated sheet on scrap, metal seams on sci-fi. Flat roofs get seams and a vent or two. Pick another covering with **Roof covering** (Scene Config, or per Region): Metal, Clay tiles, Slate, Wood shingles, Thatch or Corrugated sheet. Overviews, the Live overview and cutscenes still look in like a doll's house. Clicks and cover checks treat ceilings and roofs as solid. You can't click through a roof, and a roof between two tokens blocks the line. Turn it off with the *Roofs from outside* setting.
+- **They match the walls.** Ceilings are made of the [wall skin](#wall-skins-make-the-walls-fit-your-map): neon panels with light strips, ceiling tiles with light panels for offices and clinics, a black lighting grid for LED walls and server rooms, ducts for pipes and reactors, boards on joists, plaster between timber beams, steel on girders, marble coffers with gold, or the map's own colours. A region's *Wall skin here* dresses its ceiling too. The floor of a higher Level, seen from below, wears the skin as well.
 
-<p align="center"><img src="docs/images/ceilings.jpg" width="100%" alt="The same room corner looking up, with ceilings in nine wall skins"></p>
+<p align="center"><img src="docs/images/ceilings.jpg" width="100%" alt="Room corners looking up at ceilings in different wall skins"></p>
+<p align="center"><img src="docs/images/roofs.jpg" width="100%" alt="Peaked, slanted and pyramid roofs seen from outside and inside, in slate, shingles, tiles and thatch"></p>
 
 ### Raised areas: crates, consoles, daises and pits
 <img src="docs/images/ui-region-height.png" align="right" width="330" alt="The Vantage height field in Foundry's Region Config, set to 3">
@@ -304,10 +310,11 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 | Door height (ft) | 10 | How tall closed doors are. |
 | Raise dark areas as rock | On | Very dark map areas become solid rock. |
 | Ceilings | Automatic | Rooms get a ceiling at wall height: Automatic (rooms closed in by walls, and maps named like interiors) / The whole map is indoors / Open sky. |
+| Roofs from outside | On | In a token's eye view, buildings show their roofs from above. Overviews and cutscenes always look in like a doll's house. |
 | Rock height (ft above the floor) | 35 | How tall that rock is. |
 | How dark counts as rock | 26 | Brightness 0–255. Higher = more rock. |
 | Glow trim colour | `#3ce6ff` | The glowing strip along wall tops (Neon panels skin) and stair edges. |
-| Wall skin | Neon panels | What walls and doors are made of (12 materials, or Match the map). |
+| Wall skin | Neon panels | What walls, doors, ceilings and roofs are made of (44 materials, or Match the map). |
 | Lighting mood | Automatic | The light: the map's own, or a sun, moon, night or magical mood. |
 | Light colour | (none) | Recolours the sun or moon, sky and haze (e.g. purple fey light, a red blood moon). |
 | Haze distance (ft) | 250 | Smaller = foggier. |
@@ -331,8 +338,8 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 ### Per scene, region and token
 | Where | Field | Flag |
 |---|---|---|
-| Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock; Wall skin; Ceilings; Lighting mood; Light colour; Weather; Sun direction (degrees, 0 = top of the map) | `flags.vantage.heightMax`, `flags.vantage.raiseDark`, `flags.vantage.wallSkin`, `flags.vantage.ceiling` (`auto` / `all` / `none`), `flags.vantage.mood`, `flags.vantage.lightColor`, `flags.vantage.weather`, `flags.vantage.sunAz` |
-| Region Config → Placement → Vantage | Height (ft), negative = pit; Underside (ft); Ceiling here; Wall skin here; Looks like; Front faces; Front picture | `flags.vantage.raise`, `flags.vantage.under`, `flags.vantage.sky` (`roof` / `open`), `flags.vantage.skin`, `flags.vantage.look`, `flags.vantage.front` (degrees, empty = automatic), `flags.vantage.pic` |
+| Scene Config → Vantage | Height map: tallest point (ft); Raise dark areas as rock; Wall skin; Roof covering; Wall height (ft); Ceilings; Lighting mood; Light colour; Weather; Sun direction (degrees, 0 = top of the map) | `flags.vantage.heightMax`, `flags.vantage.raiseDark`, `flags.vantage.wallSkin`, `flags.vantage.roofMat` (`metal` / `tiles` / `slate` / `shingles` / `thatch` / `corrugated`), `flags.vantage.wallHeight`, `flags.vantage.ceiling` (`auto` / `all` / `none`), `flags.vantage.mood`, `flags.vantage.lightColor`, `flags.vantage.weather`, `flags.vantage.sunAz` |
+| Region Config → Placement → Vantage | Height (ft), negative = pit; Underside (ft); Ceiling here; Ceiling height (ft); Roof shape, Peak height (ft) and direction; Roof covering; Wall skin here; Looks like; Front faces; Front picture | `flags.vantage.raise`, `flags.vantage.under`, `flags.vantage.sky` (`roof` / `open`), `flags.vantage.ceil`, `flags.vantage.roof` (`flat` / `shed` / `gable` / `hip`), `flags.vantage.ridge`, `flags.vantage.roofDir` (0 / 90 / 180 / 270, empty = automatic), `flags.vantage.roofMat`, `flags.vantage.skin`, `flags.vantage.look`, `flags.vantage.front` (degrees, empty = automatic), `flags.vantage.pic` |
 | Token / Prototype Token Config → Appearance → Vantage 3D figure | Figure, 3D picture | `flags.vantage.figure`, `flags.vantage.standee` |
 | (token or actor flag) | Lie flat like an object | `flags.vantage.flat` |
 
@@ -389,9 +396,14 @@ Hidden tokens are never shown to players. Players' Live views (and windows, if y
 Automatic ceilings go by the walls. If a room's walls leak (a gap wider than about 6 ft) or the map's outer walls aren't drawn, set *Scene Config → Vantage → Ceilings* to **The whole map is indoors**, or draw a Region over the room with *Ceiling here: A ceiling*. For a walled courtyard or a roofless ruin, use *Ceiling here: Open sky*, or set the scene to **Open sky**.
 </details>
 
+<details><summary><b>How do I make a tall hall, or a building with a sloped roof?</b></summary>
+
+For the whole scene, set *Scene Config → Vantage → Wall height*. For one building or room, draw a Region over it and set *Ceiling height* (and, for a sloped roof, *Roof shape*, *Peak height* and its direction) in *Region Config → Vantage*. The walls rise to meet it, and from outside, in a token's eye view, you see the roof. *Roof covering* picks what it's covered with.
+</details>
+
 <details><summary><b>The walls look sci-fi on my fantasy map</b></summary>
 
-Pick a *Wall skin* that fits, such as Castle stone, Brick, Wooden planks or Timber & plaster, in the world settings or for just this scene in *Scene Config → Vantage*.
+Pick a *Wall skin* that fits, such as Castle stone, Brick, Wooden planks, Timber & plaster, Mossy ruins, Dwarven halls or Elven living wood, in the world settings or for just this scene in *Scene Config → Vantage*. For a modern map, try Concrete, Glass curtain wall, Graffiti concrete, Cinder block or Wallpaper.
 </details>
 
 <details><summary><b>The shadows fall the wrong way for my map</b></summary>
