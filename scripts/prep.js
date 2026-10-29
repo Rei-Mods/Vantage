@@ -143,13 +143,13 @@ export async function prepDialog(scene) {
   const row = (name, on, label, hint) => `<div class="form-group"><label class="checkbox"><input type="checkbox" name="${name}" ${on ? "checked" : "disabled"}> ${label}</label><p class="hint">${hint}</p></div>`;
   const content = `<p>${L("Prep.Intro")}</p>
     ${row("water", !!res.water, L("Prep.Water"), res.water ? L("Prep.WaterFound", {pct: Math.round(res.water.frac * 100)}) : L("Prep.WaterNone"))}
-    ${res.water?.preview ? `<img src="${res.water.preview}" style="display:block;max-width:100%;margin:0 0 8px;border:1px solid #3ce6ff55;border-radius:4px" alt="">` : ""}
+    ${res.water?.preview ? `<img src="${res.water.preview}" style="display:block;max-width:100%;max-height:220px;margin:0 auto 8px;object-fit:contain;border:1px solid #3ce6ff55;border-radius:4px" alt="">` : ""}
     ${row("tiles", res.tiles.length > 0, L("Prep.Tiles"), res.tiles.length ? L("Prep.TilesFound", {n: res.tiles.length, list}) : L("Prep.TilesNone"))}
     ${row("looks", res.looks.length > 0, L("Prep.Looks"), res.looks.length ? L("Prep.LooksFound", {n: res.looks.length}) : L("Prep.LooksNone"))}
     ${autos ? `<p class="hint">${L("Prep.UndoHint", {n: autos})}</p>` : ""}`;
   const {DialogV2} = foundry.applications.api;
   const choice = await DialogV2.wait({
-    window: {title: L("Prep.Title"), icon: "fa-solid fa-wand-magic-sparkles"}, content, rejectClose: false,
+    window: {title: L("Prep.Title"), icon: "fa-solid fa-wand-magic-sparkles"}, position: {width: 480}, content, rejectClose: false,
     buttons: [
       {action: "apply", label: L("Prep.Apply"), icon: "fa-solid fa-check", default: true,
         callback: (ev, btn) => { const f = btn.form; return {water: !!f.elements.water?.checked, tiles: !!f.elements.tiles?.checked, looks: !!f.elements.looks?.checked}; }},
