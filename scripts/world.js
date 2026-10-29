@@ -527,23 +527,27 @@ export async function buildWorld(data, opts = {}) {
     // each roofed area (connected) gets one flat ceiling at wall height over its floor. The floor is the highest of: the
     // typical floor (height maps), the highest Level floor inside it, and a higher Level's floor right beside it with no
     // wall between - so a double-height hall or atrium under a gallery goes up to the top Level's roof as one ceiling
-    const q = new Int32Array(N), mark = new Int32Array(N);
+    const multi = coverSet.length > 1;   // levels: the atrium check (one level: floors are all the base, nothing to look for)
+    const q = new Int32Array(N), mark = multi ? new Int32Array(N) : null;
+    let tall = rgRoofs.length > 0;       // some ceiling may be higher than the walls (they rise to meet it, below)
     const ok = new Uint8Array(N);   // 1 = still to place
     for (let k = 0; k < N; k++) ok[k] = roofed[k] && !(regRoof.length && regRoof[k]) && kind[k] !== KIND.rock && !(slabData[k * 2 + 1] > slabData[k * 2]) ? 1 : 0;
     let comp = 0;
     const isWallPx = k => kind[k] === KIND.wall || kind[k] === KIND.door || (wall && wall[k]);
+    const lvBottom = Float32Array.from(coverSet, l => l.bottom ?? 0);
     for (let k0 = 0; k0 < N; k0++) {
       if (!ok[k0]) continue;
       comp++;
-      let qh = 0, qt = 0; q[qt++] = k0; ok[k0] = 0; mark[k0] = comp;
+      let qh = 0, qt = 0; q[qt++] = k0; ok[k0] = 0;
       while (qh < qt) {
         const k = q[qh++], x = k % hw;
         let j;
-        if (x > 0 && ok[j = k - 1]) { ok[j] = 0; mark[j] = comp; q[qt++] = j; }
-        if (x < hw - 1 && ok[j = k + 1]) { ok[j] = 0; mark[j] = comp; q[qt++] = j; }
-        if (k >= hw && ok[j = k - hw]) { ok[j] = 0; mark[j] = comp; q[qt++] = j; }
-        if (k < N - hw && ok[j = k + hw]) { ok[j] = 0; mark[j] = comp; q[qt++] = j; }
+        if (x > 0 && ok[j = k - 1]) { ok[j] = 0; q[qt++] = j; }
+        if (x < hw - 1 && ok[j = k + 1]) { ok[j] = 0; q[qt++] = j; }
+        if (k >= hw && ok[j = k - hw]) { ok[j] = 0; q[qt++] = j; }
+        if (k < N - hw && ok[j = k + hw]) { ok[j] = 0; q[qt++] = j; }
       }
+      if (multi) for (let i = 0; i < qt; i++) mark[q[i]] = comp;
       // closed in mostly by low walls (a fenced yard, a ring of hedges or terrain walls), not by real walls: no ceiling
       if (wall && o.indoors !== "in") {   // (on an interior map a cage of bars is still under the roof)
         let full = 0, low = 0, forcedAny = false;
@@ -553,13 +557,15 @@ export async function buildWorld(data, opts = {}) {
       const fl = [], step = Math.max(1, Math.floor(qt / 4096));
       let lvTop = -Infinity, ring = -Infinity;
       for (let i = 0; i < qt; i += step) { const k = q[i]; if (kind[k] !== KIND.wall && kind[k] !== KIND.door && kind[k] !== KIND.prop) fl.push(levelHeight[k]); }
-      for (let i = 0; i < qt; i++) {
-        const k = q[i], lb = coverSet[owner[k]]?.bottom; if (lb > lvTop) lvTop = lb;
+      // (one pass, no allocations: this runs over every roofed pixel; only with levels)
+      const edge = j => { const kj = kind[j]; if (mark[j] !== comp && kj !== KIND.wall && kj !== KIND.door && kj !== KIND.rock && !(wall && wall[j]) && coverHeight[j] > ring) ring = coverHeight[j]; };
+      if (multi) for (let i = 0; i < qt; i++) {
+        const k = q[i], lb = lvBottom[owner[k]]; if (lb > lvTop) lvTop = lb;
         const x = k % hw;
-        for (const j of [x > 0 ? k - 1 : -1, x < hw - 1 ? k + 1 : -1, k >= hw ? k - hw : -1, k < N - hw ? k + hw : -1]) {
-          if (j < 0 || mark[j] === comp || isWallPx(j) || kind[j] === KIND.rock) continue;
-          if (coverHeight[j] > ring) ring = coverHeight[j];
-        }
+        if (x > 0 && mark[k - 1] !== comp) edge(k - 1);
+        if (x < hw - 1 && mark[k + 1] !== comp) edge(k + 1);
+        if (k >= hw && mark[k - hw] !== comp) edge(k - hw);
+        if (k < N - hw && mark[k + hw] !== comp) edge(k + hw);
       }
       fl.sort((a, b) => a - b);
       const base0 = Math.max(fl.length ? fl[fl.length >> 1] : (coverSet[owner[k0]]?.bottom ?? baseElev), lvTop);
@@ -574,6 +580,7 @@ export async function buildWorld(data, opts = {}) {
       // an atrium (open up to a higher Level beside it): the same roof goes on over that Level's floor in the room, so
       // looking up past a gallery's edge shows the roof, not the sky
       if (ring > base0 + 0.5) {
+        tall = true;
         let gh = 0, gt = 0;
         const grow = j => {   // (into the walls around it too, so they rise to meet it, but not past them)
           if (j < 0 || ceilIdx[j] || !roofed[j] || slabCeil[j] !== 1 || kind[j] === KIND.rock || mark[j] === comp) return;
@@ -632,7 +639,7 @@ export async function buildWorld(data, opts = {}) {
     // walls rise to meet a ceiling that's higher than they are (a tall hall, an atrium, the gable ends of a peaked roof), and
     // a higher Level's floor a little over their top; the highest one within the wall's thickness, so the whole wall rises
     const R = Math.ceil(rad) + 2;
-    for (let k = 0; k < N; k++) {
+    if (tall || hasSlabs) for (let k = 0; k < N; k++) {
       if (!fullWall[k] || kind[k] !== KIND.wall) continue;
       const h0 = heightFt[k];
       if (h0 < levelHeight[k] + o.wallHeight - 0.6) continue;   // not a full-height wall (a window, a fence)
@@ -642,6 +649,9 @@ export async function buildWorld(data, opts = {}) {
         if (ceilIdx[j] && ceilData[j] > m) m = ceilData[j];
         if (slabCeil[j] === 1 && slabData[j * 2] > h0 && slabData[j * 2] - h0 < 6 && slabData[j * 2 + 1] > m) m = slabData[j * 2 + 1];
       }
+      // a wall under the roof itself (a partition, the inner half of an outer wall) stops just under it, so it never
+      // pokes through a sloped roof; the outer half carries the roof's edge (and a gable's end)
+      if (ceilIdx[k]) m = Math.min(m, planeAt(ceilIdx[k], k) - 0.05);
       if (m > h0 + 0.25) heightFt[k] = m;
     }
   }
@@ -705,7 +715,9 @@ export async function buildWorld(data, opts = {}) {
     if (hasSlabs && slabData[k * 2 + 1] > slabData[k * 2] && slabData[k * 2 + 1] > maxH) maxH = slabData[k * 2 + 1];
   }
   return {W, H, ppf, gridPx: data.gridPx ?? ppf * 5, ox: data.ox, oy: data.oy, hs, hw, hh, floorCanvas: floor, heightData, heightFt, levelHeight, coverHeight,
-    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, shelterFt, propData, propInfo, propAtlas, slabData, slabCeil, ceilData, ceilIdx, ceilPlanes, ceilHeights, roofMatPx, hasSlabs, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
+    standFt, standLo, standHi, heightMapLevels: world_hm, aoMap, shelterFt, propData, propInfo, propAtlas, slabData, slabCeil, ceilData, ceilIdx, ceilPlanes, ceilHeights, roofMatPx,
+    skinsUsed: [...new Set((data.regions ?? []).map(rg => rg.skin ? (o.skins ?? []).indexOf(rg.skin) : -1).filter(i => i > 0))],   // region skins (the shader needs them)
+    looksUsed: [...new Set(propRegions.map(p => p.look).filter(l => l > 0))], hasSlabs, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
     viewElev: view?.bottom ?? baseElev,   // the floor of the level being viewed (ft): what an overview looks at
     floorLayers, hasVideo: floorLayers.some(l => isVideo(l.media)), maxTex: opts.maxTex,
     levelIds: new Set(set.map(l => l.id))};

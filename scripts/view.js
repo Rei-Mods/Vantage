@@ -1,6 +1,6 @@
 // Vantage - camera + scene state around one renderer (used by the GM window and the players' live view)
 import {PovRenderer, WALL_SKINS, ROOF_MATS} from "./renderer.js";
-import {buildWorld, buildStandees, floorAt, heightAt, coverAt, standAt, playFloor, floorFrame, KIND} from "./world.js";
+import {buildWorld, buildStandees, floorAt, heightAt, coverAt, standAt, playFloor, floorFrame, KIND, PROP_LOOKS} from "./world.js";
 
 const hash1 = x => { const s = Math.sin(x * 127.1 + 1.7) * 43758.5453; return s - Math.floor(s); };
 const noise1 = x => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return hash1(i) * (1 - u) + hash1(i + 1) * u; };
@@ -72,7 +72,13 @@ export class PovView {
     const key = PovView.key(sceneData, buildOpts);
     let world = this.cache.get(key);
     if (world) this.cache.delete(key);
-    else world = (await Promise.all([buildWorld(sceneData, {...buildOpts, maxTex: this.r.maxTex, skins: WALL_SKINS, roofMats: ROOF_MATS}), this.r.ready()]))[0];   // (the shader compiles meanwhile)
+    else {
+      // the shader for this scene's skins and looks compiles while the scene builds
+      const si = k => WALL_SKINS.indexOf(k), regs = sceneData.regions ?? [];
+      this.r.need({skins: [Math.max(0, si(this.opts.skin ?? "neon")), ...regs.map(r => si(r.skin))], looks: regs.map(r => PROP_LOOKS.indexOf(r.look ?? "plain"))});
+      world = await buildWorld(sceneData, {...buildOpts, maxTex: this.r.maxTex, skins: WALL_SKINS, roofMats: ROOF_MATS});
+    }
+    this.r.need({skins: [Math.max(0, WALL_SKINS.indexOf(this.opts.skin ?? "neon")), ...(world.skinsUsed ?? [])], looks: world.looksUsed ?? []});
     await this.r.ready();
     this.cache.set(key, world);
     while (this.cache.size > 2) this.cache.delete(this.cache.keys().next().value);
@@ -81,6 +87,12 @@ export class PovView {
     this.sceneData = sceneData;
   }
   clearCache() { this.cache.clear(); }
+  /** wait until the shader has the current wall skin (a new skin compiles in the background; until then the last one shows) */
+  async ensureShader() {
+    const W = this.world; if (!W) return;
+    this.r.need({skins: [Math.max(0, WALL_SKINS.indexOf(this.opts.skin ?? "neon")), ...(W.skinsUsed ?? [])], looks: W.looksUsed ?? []});
+    await this.r.ready();
+  }
 
   /** true when a higher level's floor covers this token (it stands under a ceiling) */
   underCeiling(tok) {

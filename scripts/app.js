@@ -143,6 +143,7 @@ export class PovWindow extends ApplicationV2 {
     if (this.view) return;
     try {
       this.view = new PovView(this.canvasEl, {});
+      this.view.r.onReady = () => this.requestRender();   // a shader for another wall skin finished compiling
     } catch (e) {
       this.stage.querySelector(".vtg-loading").textContent = L("Window.CantStart", {error: e.message});
       console.error(MOD, e); return;
@@ -749,6 +750,7 @@ export class PovViewer extends ApplicationV2 {
     const ld = this.stage.querySelector(".vtg-loading"); ld.style.display = "";
     try {
       this.view = new PovView(this.canvasEl, {});
+      this.view.r.onReady = () => { if (this.lastLive) this.applyLive(this.lastLive); };
       await prepareView(this.view, scene, msg.viewLevel, {playerView: true, maxBottom: msg.maxBottom ?? null});
       this.liveScene = msg.sceneId; this.liveLevel = msg.viewLevel; this.liveBottom = msg.maxBottom ?? null;
       this.ro = new ResizeObserver(() => this.applyLive(this.lastLive)); this.ro.observe(this.stage);
