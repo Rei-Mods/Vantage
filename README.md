@@ -33,18 +33,6 @@ It only draws while the camera moves (or something on the map animates), so it c
 
 ## Features
 
-### See through a token's eyes
-- **Eye level from any token.** Right-click a token and press the goggles button. The view looks where the token faces (its rotation, like Foundry's vision cone) and follows it as it moves or turns.
-- **Overview mode.** Orbit around the action, with an automatic cutaway that clears walls and upper floors between the camera and your party.
-<p align="center"><img src="docs/images/walk-eye-level.gif" width="80%" alt="Walking at eye level through a nightclub, past two figures, toward a third on the stage"></p>
-
-- **Free camera.** Drag to look, WASD to walk, Q/E for down/up, the mouse wheel to zoom, Shift to go faster. Pick whose eyes to look through from a dropdown. Tokens with the same name are numbered, and each entry shows its level.
-
-<p align="center">
-  <img src="docs/images/eye-level.jpg" width="49%" alt="Eye level from the DJ stage, looking over the dance floor">
-  <img src="docs/images/eye-pool-hall.jpg" width="49%" alt="Eye level in an arcade pool hall with a figure standing by the table">
-</p>
-
 ### Built automatically from your scene
 <p align="center"><img src="docs/images/rise-up.gif" width="80%" alt="A flat arcade map rising into 3D: walls, cabinets and tables grow out of the map art"></p>
 <p align="center"><sub>Everything here comes from the scene's own walls, regions and art (the rise is just for show).</sub></p>
@@ -57,23 +45,78 @@ It only draws while the camera moves (or something on the map animates), so it c
 - **Lights.** Scene lights glow on walls and floors. Darkness sources don't glow.
 - **Live updates.** Moving tokens, opening doors, or editing walls, lights, regions or levels updates the 3D view automatically.
 
-### Wall skins: make the walls fit your map
-<p align="center"><img src="docs/images/wall-skins.gif" width="80%" alt="The same room corner cycling through the wall skins, from neon panels and LED walls to brick, ruins and elven wood"></p>
+### Play in 3D
+- **Double-click the floor** and the token walks there, snapped to the grid like a drag on the map (walls stop players, as on the map). In eye view the camera walks with it. Figures walk at Foundry's token speed and follow the way the token went (a move dragged around a corner goes around it in 3D too), instead of jumping.
+- **Click a door** to open or close it, for everyone, with its sound. It lights up under the mouse. Locked doors stay shut, and secret doors only work for the GM.
+- **Click a figure** to pick it (it's selected on the map too, and a double-click moves it). **Right-click** a figure to target it (Shift keeps your other targets). Targets get an orange ring.
+- A ring shows where a double-click would land.
 
-Pick what walls and doors are made of. There are 45 skins, mostly sci-fi and modern:
+<p align="center"><img src="docs/images/play-in-3d.jpg" width="90%" alt="Walking a token by double-click, opening a door, targeting a figure"></p>
 
-- **Sci-fi (16):** Neon panels (the default, with a glowing trim), Riveted steel, Starship panels, Holographic grid, Hex plating, Biotech, Carbon fibre, Polished chrome, LED video wall, Neon alley brick, Cryo, Server racks, Force field, Hangar bulkhead, Reactor and Starship viewports.
-- **Modern and modern fantasy (16):** Concrete, Corrugated scrap, Glass curtain wall, Tiles, Graffiti concrete, Cinder block, Wallpaper and wainscot, Boarded-up plywood, Padded leather, Clinic, Shipping containers, Rusted plate, Pipes and conduits, Arcane runes (glowing wards), Shoji screens and Art deco.
-- **High fantasy (12):** Brick, Castle stone, Rough rock, Wooden planks, Timber & plaster, Marble & gold, Hedge, Sandstone, Mossy ruins, Dwarven halls, Elven living wood and Crystal cave. Brick, wood, rock and marble suit modern maps too.
-- **Match the map** builds the walls from the colours of the floor next to them.
+### Cutscenes and clips
+- **Camera points**: open the film panel in the window, move the camera, click **Add point**, move, add another... The points are saved with the scene.
+- **Play** flies the camera smoothly through them; players in **Live** watch the same flight, in step, on their own screens.
+- **Record** saves a video of the window (MP4 where the browser can, otherwise WebM). With 2 or more points it records the cutscene; without, it records until you click again. Players can record their own view too.
 
-What glows keeps glowing in the dark: neon tubes, LED walls, coolant, runes, crystals, a lit window here and there.
+### See through a token's eyes
+- **Eye level from any token**, player characters and NPCs alike. Right-click a token and press the goggles button. The view looks where the token faces (its rotation, like Foundry's vision cone) and follows it as it moves or turns.
+- **Overview mode.** Orbit around the action, with an automatic cutaway that clears walls and upper floors between the camera and your party.
+<p align="center"><img src="docs/images/walk-eye-level.gif" width="80%" alt="Walking at eye level through a nightclub, past two figures, toward a third on the stage"></p>
 
-Set a default in the world settings, and give any scene its own skin in **Scene Config → Vantage**. [Ceilings and roofs](#ceilings-and-roofs) are made of it too. Doors match the skin: wooden doors in brick and stone, a gate in a hedge, a roller shutter in graffiti, a mesh door on a server room, hazard stripes on steel. Raised areas use the same material for the natural skins (a stone dais, a wooden counter, padded booths, a stack of containers). With the sci-fi skins they stay plain metal, so consoles still look like consoles.
+- **Free camera.** Drag to look, WASD to walk, Q/E for down/up, the mouse wheel to zoom, Shift to go faster. Pick whose eyes to look through from a dropdown. Tokens with the same name are numbered, and each entry shows its level.
 
-<p align="center"><img src="docs/images/wall-skins.jpg" width="100%" alt="The same room corner with each of the 45 wall skins, labelled"></p>
+<p align="center">
+  <img src="docs/images/eye-level.jpg" width="49%" alt="Eye level from the DJ stage, looking over the dance floor">
+  <img src="docs/images/eye-pool-hall.jpg" width="49%" alt="Eye level in an arcade pool hall with a figure standing by the table">
+</p>
 
-**Per region**: a Region's **Wall skin here** (Region Config → Vantage) dresses the walls inside it differently, so a brick building can stand on a neon street, or a wooden cabin inside a stone keep.
+### Players see only what their tokens see
+In Live views (and the window, if players may open it) whatever their tokens can't see right now is dark, and places they explored before stay a dim grey memory, like fog of war on the map. Show Players pictures are never limited: you choose what to send.
+
+<p align="center"><img src="docs/images/player-vision.jpg" width="90%" alt="The GM sees every room; a player sees only what their token sees"></p>
+
+### Spell templates and cover
+- **Templates show up in 3D** as they're placed on the map: circles, cones, lines and squares tint the ground with a glowing edge, and a circle rises as a faint dome (a sphere of effect). Hidden templates stay GM-only.
+- **Cover check**: pick a token (click its figure, or look through its eyes) and target others. A line runs to each target, coloured by its cover (green none, yellow half, orange three-quarters, red full), and the window lists it ("half cover (+2 AC)"). It is worked out in 3D from the best spot in your token's square to 9 points over the target's body, so walls, low walls, crates, terrain and other creatures (half cover) all count.
+
+<p align="center"><img src="docs/images/templates-cover.jpg" width="90%" alt="A fireball dome, cone, line and square in 3D, and coloured cover lines to targets"></p>
+
+### Raised areas: crates, consoles, daises and pits
+<img src="docs/images/ui-region-height.png" align="right" width="330" alt="The Vantage height field in Foundry's Region Config, set to 3">
+
+Open any **Region → Placement → Vantage (3D view) → Height (ft)**. The region becomes a solid block that tall, with the map art staying on top. A negative height digs a pit. Tokens inside stand on top of the block, or at the bottom of the pit. To make a crate, draw a rectangle over a painted one and set Height 4.
+
+<p align="center"><img src="docs/images/raised-areas.gif" width="80%" alt="Orbiting arcade cabinets and an air-hockey table raised as solid blocks"></p>
+
+<br clear="right">
+
+**Looks like**: a top-down map has no art for the *sides* of a cabinet, so pick what the block is, and Vantage draws its front, sides and back. 40 looks: arcade cabinet, vending machine, server rack, bookshelf, wooden crate, cargo container, computer console, bar counter, shop counter, fridge, lockers, stone plinth, barrels, machinery, wardrobe / dresser, glass display case, sandbags, hay bales, neon kiosk, altar, table, bed, hearth, treasure chest, sofa, ATM, jukebox, reactor core, stacked tyres, dumpster, car, warehouse shelving, piano, market stall, planter, boulder, ice block, glowing crystals, cage / jail bars, or *the top's art carried down*. Screens, LEDs and neon glow; colours come from the art on top; a long block becomes a row of machines, each a little different. The front faces the open floor (or the side you choose). Add a **Front picture** (any image: a cabinet front, a shop sign) to put real art on the front face.
+
+<p align="center"><img src="docs/images/looks-catalogue.jpg" width="90%" alt="The 40 looks for raised areas, from arcade cabinet to jail bars"></p>
+
+### Animated maps and lights
+- **Video maps** (`.webm` / `.mp4`) play in 3D, on every level, and walls and figures stand on the moving art.
+- **Lights follow their Foundry animation**: torches and flames flicker, pulses breathe, sirens sweep, chroma and rainbow lights cycle colour, fog and ghost lights drift.
+- About 30 frames a second while anything moves, never while the window is minimized. Turn it off per computer with *Animate the 3D view*.
+
+### Height maps: hills, rubble and riverbanks
+Put a grey image next to a map, named like the map plus `_height`, for example `Canyon.webp` → `Canyon_height.webp` (`.png` and `.jpg` work too). White is the tallest point and black is flat floor. Tokens stand on the slopes. Set the tallest point in the world settings, or per scene in **Scene Config → Vantage**.
+
+<p align="center"><img src="docs/images/height-map-rise.gif" width="80%" alt="A river canyon rising: grassy banks from a height map, walkways and towers from raised areas"></p>
+
+### Bridges, balconies and overhangs
+Give a raised region an **Underside (ft)** below its Height and it floats: a bridge deck (Height 17, Underside 15.5), a balcony, a roof or an awning, with open space under it to walk through and see through. Tokens at its height stand on top; tokens below walk underneath. In eye view under a higher Level, that level becomes a ceiling over your head instead of disappearing.
+
+<p align="center"><img src="docs/images/bridges.jpg" width="90%" alt="A raised walkway as a solid wall, and as a bridge with the river under it"></p>
+
+### Time of day and weather
+- **Time of day**: the sun/moon slider in the window bar runs from noon through golden hour and dusk to moonlight. It sets the scene's darkness (so Foundry's own lighting follows) and switches the scene to the *Day cycle* lighting mood. Foundry's darkness control drives the 3D light too.
+- **11 kinds of weather in 3D**: rain, thunderstorm (with lightning), snow, blizzard, fog (drifting ground mist), falling ash, embers, falling leaves, fireflies, sandstorm, or clear. Drops and flakes are real 3D particles: they fall behind and in front of figures, catch the light of nearby lamps, and stop at walls.
+- **Follows Foundry**: by default a scene shows its own Foundry weather (or FXMaster's). Pick another in the window or in Scene Config.
+- **Stays dry where it should**: regions with a *Suppress Weather* behaviour, and everything under a higher level.
+- Rain leaves wet ground with rings in the puddles; snow whitens the ground.
+
+<p align="center"><img src="docs/images/weather.jpg" width="90%" alt="A canyon in a thunderstorm, in snow, and in fog at golden hour"><br><img src="docs/images/time-of-day.jpg" width="90%" alt="The time-of-day slider: noon, golden hour, dusk, moonlight"></p>
 
 ### Lighting moods: match the map's vibe
 <p align="center"><img src="docs/images/lighting-moods.gif" width="80%" alt="A canyon base cycling through bright sun, golden hour, synthwave sunset, moonlight, aurora night, fey twilight, blood moon, under the sea, holy light and hellfire"></p>
@@ -136,27 +179,23 @@ Rooms get a ceiling. You see it when you look up at eye level, or in a low overv
 <p align="center"><img src="docs/images/ceilings.jpg" width="100%" alt="Room corners looking up at ceilings in different wall skins"></p>
 <p align="center"><img src="docs/images/roofs.jpg" width="100%" alt="Peaked, slanted and pyramid roofs seen from outside and inside, in slate, shingles, tiles and thatch"></p>
 
-### Raised areas: crates, consoles, daises and pits
-<img src="docs/images/ui-region-height.png" align="right" width="330" alt="The Vantage height field in Foundry's Region Config, set to 3">
+### Wall skins: make the walls fit your map
+<p align="center"><img src="docs/images/wall-skins.gif" width="80%" alt="The same room corner cycling through the wall skins, from neon panels and LED walls to brick, ruins and elven wood"></p>
 
-Open any **Region → Placement → Vantage (3D view) → Height (ft)**. The region becomes a solid block that tall, with the map art staying on top. A negative height digs a pit. Tokens inside stand on top of the block, or at the bottom of the pit. To make a crate, draw a rectangle over a painted one and set Height 4.
+Pick what walls and doors are made of. There are 45 skins, mostly sci-fi and modern:
 
-<p align="center"><img src="docs/images/raised-areas.gif" width="80%" alt="Orbiting arcade cabinets and an air-hockey table raised as solid blocks"></p>
+- **Sci-fi (16):** Neon panels (the default, with a glowing trim), Riveted steel, Starship panels, Holographic grid, Hex plating, Biotech, Carbon fibre, Polished chrome, LED video wall, Neon alley brick, Cryo, Server racks, Force field, Hangar bulkhead, Reactor and Starship viewports.
+- **Modern and modern fantasy (16):** Concrete, Corrugated scrap, Glass curtain wall, Tiles, Graffiti concrete, Cinder block, Wallpaper and wainscot, Boarded-up plywood, Padded leather, Clinic, Shipping containers, Rusted plate, Pipes and conduits, Arcane runes (glowing wards), Shoji screens and Art deco.
+- **High fantasy (12):** Brick, Castle stone, Rough rock, Wooden planks, Timber & plaster, Marble & gold, Hedge, Sandstone, Mossy ruins, Dwarven halls, Elven living wood and Crystal cave. Brick, wood, rock and marble suit modern maps too.
+- **Match the map** builds the walls from the colours of the floor next to them.
 
-<br clear="right">
+What glows keeps glowing in the dark: neon tubes, LED walls, coolant, runes, crystals, a lit window here and there.
 
-**Bridges, roofs and overhangs**: give a raised region an **Underside (ft)** below its Height and it floats: a bridge deck (Height 17, Underside 15.5), a balcony, a roof or an awning, with open space under it to walk through and see through. Tokens at its height stand on top; tokens below walk underneath. In eye view under a higher Level, that level becomes a ceiling over your head instead of disappearing.
+Set a default in the world settings, and give any scene its own skin in **Scene Config → Vantage**. [Ceilings and roofs](#ceilings-and-roofs) are made of it too. Doors match the skin: wooden doors in brick and stone, a gate in a hedge, a roller shutter in graffiti, a mesh door on a server room, hazard stripes on steel. Raised areas use the same material for the natural skins (a stone dais, a wooden counter, padded booths, a stack of containers). With the sci-fi skins they stay plain metal, so consoles still look like consoles.
 
-<p align="center"><img src="docs/images/bridges.jpg" width="90%" alt="A raised walkway as a solid wall, and as a bridge with the river under it"></p>
+<p align="center"><img src="docs/images/wall-skins.jpg" width="100%" alt="The same room corner with each of the 45 wall skins, labelled"></p>
 
-**Looks like**: a top-down map has no art for the *sides* of a cabinet, so pick what the block is, and Vantage draws its front, sides and back. 40 looks: arcade cabinet, vending machine, server rack, bookshelf, wooden crate, cargo container, computer console, bar counter, shop counter, fridge, lockers, stone plinth, barrels, machinery, wardrobe / dresser, glass display case, sandbags, hay bales, neon kiosk, altar, table, bed, hearth, treasure chest, sofa, ATM, jukebox, reactor core, stacked tyres, dumpster, car, warehouse shelving, piano, market stall, planter, boulder, ice block, glowing crystals, cage / jail bars, or *the top's art carried down*. Screens, LEDs and neon glow; colours come from the art on top; a long block becomes a row of machines, each a little different. The front faces the open floor (or the side you choose). Add a **Front picture** (any image: a cabinet front, a shop sign) to put real art on the front face.
-
-<p align="center"><img src="docs/images/looks-catalogue.jpg" width="90%" alt="The 40 looks for raised areas, from arcade cabinet to jail bars"></p>
-
-### Height maps: hills, rubble and riverbanks
-Put a grey image next to a map, named like the map plus `_height`, for example `Canyon.webp` → `Canyon_height.webp` (`.png` and `.jpg` work too). White is the tallest point and black is flat floor. Tokens stand on the slopes. Set the tallest point in the world settings, or per scene in **Scene Config → Vantage**.
-
-<p align="center"><img src="docs/images/height-map-rise.gif" width="80%" alt="A river canyon rising: grassy banks from a height map, walkways and towers from raised areas"></p>
+**Per region**: a Region's **Wall skin here** (Region Config → Vantage) dresses the walls inside it differently, so a brick building can stand on a neon street, or a wooden cabin inside a stone keep.
 
 ### Figures stand up
 - Each token stands up as a cut-out of its actor's **portrait**, with a coloured base ring: red for hostile, cyan for friendly, yellow for neutral, purple for secret.
@@ -178,46 +217,10 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 
 <p align="center"><img src="docs/images/stage-lights.jpg" width="80%" alt="A DJ booth on a lit stage with a figure in front of it"></p>
 
-### Play in 3D
-- **Double-click the floor** and the token walks there, snapped to the grid like a drag on the map (walls stop players, as on the map). In eye view the camera walks with it. Figures walk at Foundry's token speed and follow the way the token went (a move dragged around a corner goes around it in 3D too), instead of jumping.
-- **Click a door** to open or close it, for everyone, with its sound. It lights up under the mouse. Locked doors stay shut, and secret doors only work for the GM.
-- **Click a figure** to pick it (it's selected on the map too, and a double-click moves it). **Right-click** a figure to target it (Shift keeps your other targets). Targets get an orange ring.
-- A ring shows where a double-click would land.
-
-<p align="center"><img src="docs/images/play-in-3d.jpg" width="90%" alt="Walking a token by double-click, opening a door, targeting a figure"></p>
-
-### Spell templates and cover
-- **Templates show up in 3D** as they're placed on the map: circles, cones, lines and squares tint the ground with a glowing edge, and a circle rises as a faint dome (a sphere of effect). Hidden templates stay GM-only.
-- **Cover check**: pick a token (click its figure, or look through its eyes) and target others. A line runs to each target, coloured by its cover (green none, yellow half, orange three-quarters, red full), and the window lists it ("half cover (+2 AC)"). It is worked out in 3D from the best spot in your token's square to 9 points over the target's body, so walls, low walls, crates, terrain and other creatures (half cover) all count.
-
-<p align="center"><img src="docs/images/templates-cover.jpg" width="90%" alt="A fireball dome, cone, line and square in 3D, and coloured cover lines to targets"></p>
-
-### Weather and time of day
-- **11 kinds of weather in 3D**: rain, thunderstorm (with lightning), snow, blizzard, fog (drifting ground mist), falling ash, embers, falling leaves, fireflies, sandstorm, or clear. Drops and flakes are real 3D particles: they fall behind and in front of figures, catch the light of nearby lamps, and stop at walls.
-- **Follows Foundry**: by default a scene shows its own Foundry weather (or FXMaster's). Pick another in the window or in Scene Config.
-- **Stays dry where it should**: regions with a *Suppress Weather* behaviour, and everything under a higher level.
-- Rain leaves wet ground with rings in the puddles; snow whitens the ground.
-- **Time of day**: the sun/moon slider in the window bar runs from noon through golden hour and dusk to moonlight. It sets the scene's darkness (so Foundry's own lighting follows) and switches the scene to the *Day cycle* lighting mood. Foundry's darkness control drives the 3D light too.
-
-<p align="center"><img src="docs/images/weather.jpg" width="90%" alt="A canyon in a thunderstorm, in snow, and in fog at golden hour"><br><img src="docs/images/time-of-day.jpg" width="90%" alt="The time-of-day slider: noon, golden hour, dusk, moonlight"></p>
-
-### Animated maps and lights
-- **Video maps** (`.webm` / `.mp4`) play in 3D, on every level, and walls and figures stand on the moving art.
-- **Lights follow their Foundry animation**: torches and flames flicker, pulses breathe, sirens sweep, chroma and rainbow lights cycle colour, fog and ghost lights drift.
-- About 30 frames a second while anything moves, never while the window is minimized. Turn it off per computer with *Animate the 3D view*.
-
-### Cutscenes and clips
-- **Camera points**: open the film panel in the window, move the camera, click **Add point**, move, add another... The points are saved with the scene.
-- **Play** flies the camera smoothly through them; players in **Live** watch the same flight, in step, on their own screens.
-- **Record** saves a video of the window (MP4 where the browser can, otherwise WebM). With 2 or more points it records the cutscene; without, it records until you click again. Players can record their own view too.
-
 ### Show your players
 - **Show Players** sends the current picture to everyone, and also works on phones. Hidden tokens are never in it.
 - **Live** makes your players' screens follow your camera while you move it. Phones get a fresh picture whenever you stop moving.
 - Optionally, let players open the view from their own tokens.
-- **Players see only what their tokens see**: in Live views (and the window, if players may open it) whatever their tokens can't see right now is dark, and places they explored before stay a dim grey memory, like fog of war on the map. Show Players pictures are never limited: you choose what to send.
-
-<p align="center"><img src="docs/images/player-vision.jpg" width="90%" alt="The GM sees every room; a player sees only what their token sees"></p>
 
 ### Light on performance
 - **Nothing runs while the window is closed.** While it's open, it only draws when the camera moves or something on the map animates (at most 30 frames a second for animation).
