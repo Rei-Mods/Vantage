@@ -150,6 +150,19 @@ function isObject(doc) {
 }
 
 /** forViewer: the user whose eyes decide which tokens appear (GM sees all, hidden ones faded) */
+/** the way a token's last move went (Foundry's movement waypoints, as centres in scene-rect px), so its figure walks
+ *  it in 3D: {moveId, path} for a finished move that ended where the token stands now, else nothing */
+function movePath(doc, r) {
+  try {
+    const m = doc.movement, wps = m?.passed?.waypoints, end = m?.destination;
+    if (!m?.id || !wps?.length || !end || Math.abs(end.x - doc.x) > 1 || Math.abs(end.y - doc.y) > 1) return {};
+    const gs = r.gridPx, c = p => [p.x + (p.width ?? doc.width) * gs / 2 - r.ox, p.y + (p.height ?? doc.height) * gs / 2 - r.oy];
+    const path = [m.origin, ...wps, end].filter(p => Number.isFinite(p?.x) && Number.isFinite(p?.y)).map(c)
+      .filter((p, i, a) => !i || Math.hypot(p[0] - a[i - 1][0], p[1] - a[i - 1][1]) > 1);
+    return path.length > 2 ? {moveId: m.id, path} : {};
+  } catch (e) { return {}; }
+}
+
 export function tokensOf(scene, {playerView = false} = {}) {
   const r = rectOf(scene);
   const out = [];
@@ -165,7 +178,7 @@ export function tokensOf(scene, {playerView = false} = {}) {
     const srcs = standeeSrcs(doc, loot, mode); if (!srcs.length) continue;
     const gs = r.gridPx;
     out.push({
-      id: doc.id, name: doc.name, src: srcs[0], srcs,
+      id: doc.id, name: doc.name, src: srcs[0], srcs, ...movePath(doc, r),
       x: doc.x + doc.width * gs / 2 - r.ox, y: doc.y + doc.height * gs / 2 - r.oy,
       elevation: doc.elevation ?? 0, size: Math.max(doc.width, doc.height), rotation: doc.rotation ?? 0,
       ringColor: doc.object?.isTargeted ? TARGET : DISPO[String(doc.disposition)] ?? DISPO["0"], targeted: !!doc.object?.isTargeted,

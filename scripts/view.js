@@ -105,25 +105,54 @@ export class PovView {
     tokens = tokens.filter(t => !t.level || !ids?.size || ids.has(t.level));
     const {atlas, list} = await buildStandees(this.world, tokens, {tiltDeg: this.opts.tiltDeg});
     this.r.setAtlas(atlas);
-    // figures that moved glide to their new spot (about a third of a second), like tokens on the map
-    const old = new Map(this.standees.map(s => [s.id, this.shown(s)])), now = this.clock();
+    const byId = new Map(tokens.map(t => [t.id, t]));
+    for (const s of list) { const t = byId.get(s.id); if (t?.moveId) { s.moveId = t.moveId; s.path = t.path; } }
+    // figures that moved walk to their new spot like tokens on the map: along the way they went (Foundry's
+    // waypoints, so around corners, not through walls) and at Foundry's token speed (grid spaces per second)
+    const old = new Map(this.standees.map(s => [s.id, {at: this.shown(s), moveId: s.moveId}])), now = this.clock();
+    const gp = this.world.gridPx || this.world.ppf * 5, speed = Math.max(0.5, Number(globalThis.CONFIG?.Token?.movement?.defaultSpeed) || 6) * gp;
     for (const s of list) {
-      const o = old.get(s.id);
-      if (o && Math.hypot(o.x - s.x, o.z - s.z) > 1 && Math.hypot(o.x - s.x, o.z - s.z) < 40 * this.world.gridPx) s.glide = {from: [o.x, o.y, o.z], t0: now, dur: 0.35};
+      const o = old.get(s.id); if (!o) continue;
+      const a = o.at, d = Math.hypot(a.x - s.x, a.z - s.z);
+      if (d <= 1 || d >= 40 * gp) continue;   // a nudge, or a jump across the map (a teleport stays one)
+      const pts = [[a.x, a.y, a.z]];
+      if (s.path?.length > 2 && s.moveId !== o.moveId) for (const [px, pz] of s.path.slice(1, -1)) pts.push([px, null, pz]);
+      pts.push([s.x, s.y, s.z]);
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][2] - pts[i - 1][2]));
+      const L = cum[cum.length - 1]; if (L >= 40 * gp) continue;
+      for (let i = 1; i < pts.length - 1; i++) pts[i][1] = a.y + (s.y - a.y) * cum[i] / L;   // height eases from start to end
+      s.glide = {pts, cum, L, t0: now, dur: Math.max(0.35, L / speed)};
     }
     this.standees = list;
   }
   /** seconds: the view's own clock when set (recorded clips), else real time */
   clock() { return this.time ?? performance.now() / 1000; }
+  /** how far along a glide (0..1 of its length) at the clock: steady speed, easing in and out */
+  glideK(g) {
+    const k = Math.max(0, Math.min(1, (this.clock() - g.t0) / g.dur));
+    return {k, e: 0.5 * k + 0.5 * k * k * (3 - 2 * k)};
+  }
+  /** a point part way (e = 0..1 of the length) along a glide's way */
+  glideAt(g, e) {
+    const d = e * g.L; let i = 1; while (i < g.pts.length - 1 && g.cum[i] < d) i++;
+    const a = g.pts[i - 1], b = g.pts[i], q = (d - g.cum[i - 1]) / ((g.cum[i] - g.cum[i - 1]) || 1);
+    return [a[0] + (b[0] - a[0]) * q, a[1] + (b[1] - a[1]) * q, a[2] + (b[2] - a[2]) * q];
+  }
   /** where a figure is drawn right now (part way along a glide) */
   shown(s) {
     const g = s.glide; if (!g) return s;
-    const k = Math.max(0, Math.min(1, (this.clock() - g.t0) / g.dur)), e = k * k * (3 - 2 * k);
+    const {k, e} = this.glideK(g);
     if (k >= 1) { delete s.glide; return s; }
-    return {...s, x: g.from[0] + (s.x - g.from[0]) * e, y: g.from[1] + (s.y - g.from[1]) * e, z: g.from[2] + (s.z - g.from[2]) * e};
+    const [x, y, z] = this.glideAt(g, e);
+    return {...s, x, y, z};
   }
-  /** the camera glides to a new eye position (the token you look through moved) */
-  glideCam(from) { if (from) this._camGlide = {from: [...from], t0: this.clock(), dur: 0.35}; }
+  /** the camera glides to a new eye position (the token you look through moved): along its figure's way when it has one */
+  glideCam(from) {
+    if (!from) return;
+    const s = this.standees.find(x => x.id === this.selfId), g = s?.glide;
+    this._camGlide = g ? {from: [...from], to: [...this.cam.pos], fig: g, t0: g.t0, dur: g.dur} : {from: [...from], t0: this.clock(), dur: 0.35};
+  }
   /** a glide is under way: keep drawing */
   isMoving() { return !!this._camGlide || this.standees.some(s => s.glide); }
 
@@ -250,7 +279,11 @@ export class PovView {
       f = norm([Math.cos(y) * Math.cos(p), Math.sin(p), Math.sin(y) * Math.cos(p)]);
       pos = c.pos;
       const g = this._camGlide;
-      if (g) {
+      if (g?.fig) {   // walk with the figure: its way on the ground, the eye height easing from the old to the new
+        const {k, e} = this.glideK(g.fig);
+        if (k >= 1 || pos[0] !== g.to[0] || pos[2] !== g.to[2]) this._camGlide = null;
+        else { const p = this.glideAt(g.fig, e); pos = [p[0], g.from[1] + (g.to[1] - g.from[1]) * e, p[2]]; }
+      } else if (g) {
         const k = Math.max(0, Math.min(1, (this.clock() - g.t0) / g.dur)), e = k * k * (3 - 2 * k);
         if (k >= 1) this._camGlide = null; else pos = pos.map((v, i) => g.from[i] + (v - g.from[i]) * e);
       }

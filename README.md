@@ -179,7 +179,7 @@ The 4 nearest lights cast soft shadows from walls, rock and raised areas. Floors
 <p align="center"><img src="docs/images/stage-lights.jpg" width="80%" alt="A DJ booth on a lit stage with a figure in front of it"></p>
 
 ### Play in 3D
-- **Double-click the floor** and the token walks there, snapped to the grid like a drag on the map (walls stop players, as on the map). In eye view the camera walks with it; figures glide instead of jumping.
+- **Double-click the floor** and the token walks there, snapped to the grid like a drag on the map (walls stop players, as on the map). In eye view the camera walks with it. Figures walk at Foundry's token speed and follow the way the token went (a move dragged around a corner goes around it in 3D too), instead of jumping.
 - **Click a door** to open or close it, for everyone, with its sound. It lights up under the mouse. Locked doors stay shut, and secret doors only work for the GM.
 - **Click a figure** to pick it (it's selected on the map too, and a double-click moves it). **Right-click** a figure to target it (Shift keeps your other targets). Targets get an orange ring.
 - A ring shows where a double-click would land.
