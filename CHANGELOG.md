@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- **Fixed:** Scene Config could not be saved (so scenes could not be renamed or changed) while the *Raise dark map areas* field was left on *Use the world setting*. The field sent an empty value as JSON, which Foundry could not read.
+
 ## 1.0.0 — first public release
 
 Everything is new, so here is the full list:

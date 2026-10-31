@@ -140,7 +140,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   if (!part || part.querySelector(".vtg-scene")) return;
   const f = app.document?.flags?.[MOD] ?? {};
   const hm = Number.isFinite(Number(f.heightMax)) && f.heightMax !== "" && f.heightMax != null ? f.heightMax : "";
-  const rd = f.raiseDark === true ? "true" : f.raiseDark === false ? "false" : "";
+  const rd = f.raiseDark === true || f.raiseDark === "true" ? "true" : f.raiseDark === false || f.raiseDark === "false" ? "false" : "";
   const opt = (v, label, cur) => `<option value="${v}" ${v === (cur ?? "") ? "selected" : ""}>${escA(label)}</option>`;
   const skinSel = [opt("", L("Scene.UseWorld"), f.wallSkin), ...WALL_SKINS.map(k => opt(k, L(`Skins.${k}`), f.wallSkin))].join("");
   const moodSel = [opt("", L("Scene.UseWorld"), f.mood), ...Object.keys(MOODS).map(k => opt(k, L(`Moods.${k}`), f.mood))].join("");
@@ -157,7 +157,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
       <p class="hint">${L("Scene.HeightMaxHint")}</p>
     </div>
     <div class="form-group"><label>${L("Scene.RaiseDark")}</label>
-      <div class="form-fields"><select name="flags.${MOD}.raiseDark" data-dtype="JSON">
+      <div class="form-fields"><select name="flags.${MOD}.raiseDark" data-dtype="String">
         <option value="" ${rd === "" ? "selected" : ""}>${L("Scene.UseWorld")}</option>
         <option value="true" ${rd === "true" ? "selected" : ""}>${L("Scene.On")}</option>
         <option value="false" ${rd === "false" ? "selected" : ""}>${L("Scene.Off")}</option></select></div>
