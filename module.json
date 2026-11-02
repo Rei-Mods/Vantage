@@ -2,7 +2,7 @@
   "id": "vantage",
   "title": "Vantage",
   "description": "See any battlemap in 3D, built automatically from the scene you already have, and play in it. The map art becomes the floor, walls and doors rise up, Levels become real heights, regions become crates, cabinets, bridges and pits (40 looks), scene lights glow and cast shadows, and tokens stand up as figures. Look through a token's eyes or orbit an overview; walk tokens, open doors, target, see templates and cover; add weather, time of day and animated maps; fly cutscenes and record them; show it to your players live, limited to what their tokens see. It only draws while something changes, so it costs nothing when closed or idle.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "authors": [
     {
       "name": "Rei-Mods",
@@ -33,7 +33,7 @@
   "changelog": "https://github.com/Rei-Mods/Vantage/blob/main/CHANGELOG.md",
   "license": "https://github.com/Rei-Mods/Vantage/blob/main/LICENSE",
   "manifest": "https://github.com/Rei-Mods/Vantage/releases/latest/download/module.json",
-  "download": "https://github.com/Rei-Mods/Vantage/releases/download/v1.0.1/vantage.zip",
+  "download": "https://github.com/Rei-Mods/Vantage/releases/download/v1.0.2/vantage.zip",
   "media": [
     {
       "type": "cover",

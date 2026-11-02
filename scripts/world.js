@@ -303,7 +303,7 @@ export async function buildWorld(data, opts = {}) {
   const byId = new Map(all.map(l => [l.id, l]));
   const sampleLevel = (x, y) => { const xi = Math.min(hw - 1, Math.max(0, Math.round(x))), yi = Math.min(hh - 1, Math.max(0, Math.round(y))); return levelHeight[yi * hw + xi]; };
   const rad = Math.max(1, 0.25 * ppf * hs);
-  const fullWall = new Uint8Array(hw * hh);   // pixels of full-height walls (they rise to meet a higher ceiling)
+  const fullWall = new Uint8Array(hw * hh);   // pixels of full-height walls: 1 = rise to meet a higher ceiling, 2 = a wall with its own height (stays put)
   const doorRecs = [];                        // every door, open or shut: the wall continues above it (a lintel)
   const brush = (x1, y1, x2, y2, fn) => {
     const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 0.5), r = Math.ceil(rad);
@@ -340,14 +340,16 @@ export async function buildWorld(data, opts = {}) {
         base = Math.max(base, sampleLevel(mx, my), sampleLevel(mx + nx, my + ny), sampleLevel(mx - nx, my - ny));
       }
     }
-    if ((wl.door ?? 0) > 0 && (open || isDoor)) doorRecs.push({x1, y1, x2, y2, base});
+    // a height set on the wall itself (Wall Config > Vantage) wins over the scene's wall / door / low-wall height
+    const own = Number.isFinite(wl.h) && wl.h > 0 ? wl.h : null;
+    if ((wl.door ?? 0) > 0 && (open || isDoor)) doorRecs.push({x1, y1, x2, y2, base, h: isDoor ? own : null});
     if (open) continue;   // an open door: just the gap (and the lintel over it, below)
-    const top = base + (isDoor ? o.doorHeight : low ? Math.min(o.lowWallHeight, o.wallHeight) : o.wallHeight);
-    const k = isDoor ? KIND.door : KIND.wall, full = !isDoor && !low;
+    const top = base + (own ?? (isDoor ? o.doorHeight : low ? Math.min(o.lowWallHeight, o.wallHeight) : o.wallHeight));
+    const k = isDoor ? KIND.door : KIND.wall, full = !isDoor && !low, mark = own !== null ? 2 : 1;
     brush(x1, y1, x2, y2, idx => {
       if (kind[idx] === KIND.rock) return;
       if (top > heightFt[idx]) { heightFt[idx] = top; kind[idx] = k; }
-      if (full && heightFt[idx] <= top + 0.01) fullWall[idx] = 1;
+      if (full && heightFt[idx] <= top + 0.01) fullWall[idx] = mark;
     });
   }
 
@@ -640,7 +642,7 @@ export async function buildWorld(data, opts = {}) {
     // a higher Level's floor a little over their top; the highest one within the wall's thickness, so the whole wall rises
     const R = Math.ceil(rad) + 2;
     if (tall || hasSlabs) for (let k = 0; k < N; k++) {
-      if (!fullWall[k] || kind[k] !== KIND.wall) continue;
+      if (fullWall[k] !== 1 || kind[k] !== KIND.wall) continue;   // (a wall with its own height keeps it)
       const h0 = heightFt[k];
       if (h0 < levelHeight[k] + o.wallHeight - 0.6) continue;   // not a full-height wall (a window, a fence)
       const x = k % hw, y = (k / hw) | 0; let m = -1;
@@ -666,7 +668,7 @@ export async function buildWorld(data, opts = {}) {
 
   // ---- lintels: the wall carries on over every door (open or shut) up to the wall's top or the ceiling
   for (const dr of doorRecs) {
-    const top0 = dr.base + o.doorHeight;
+    const top0 = dr.base + (dr.h ?? o.doorHeight);
     const px = []; brush(dr.x1, dr.y1, dr.x2, dr.y2, k => px.push(k));
     // only in a wall: a door between full walls, or under a ceiling (not a gate in a fence)
     let inWall = false, roofedDoor = false;

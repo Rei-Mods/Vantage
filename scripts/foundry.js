@@ -33,6 +33,13 @@ function heightSrcs(src, max) {
   return ["webp", "png", "jpg"].map(x => `${m[1]}_height.${x}`);
 }
 
+// a wall's own height (Wall Config > Vantage, ft), else null = the scene's / world's wall, door or low-wall height
+export function wallHeightOf(w) {
+  const v = w?.flags?.[MOD]?.height;
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 200) : null;
+}
 export function sceneData(scene, viewLevel) {
   const r = rectOf(scene);
   const hMax = heightMaxOf(scene);
@@ -51,7 +58,7 @@ export function sceneData(scene, viewLevel) {
   // sight NORMAL = a full wall; LIMITED / PROXIMITY / DISTANCE (windows, foliage, glass) = a low wall you can see over
   const NORMAL = CONST.WALL_SENSE_TYPES?.NORMAL ?? 20;
   const walls = scene.walls.contents.map(w => ({id: w.id, c: [...w.c], sight: w.sight, low: !!w.sight && w.sight !== NORMAL,
-    door: w.door, ds: w.ds, levels: [...(w.levels ?? [])]}));
+    door: w.door, ds: w.ds, levels: [...(w.levels ?? [])], h: wallHeightOf(w)}));
   return {...r, levels, walls, regions: regionsOf(scene), viewLevel: viewLevel ?? scene.levels?.contents?.[0]?.id ?? "base"};
 }
 

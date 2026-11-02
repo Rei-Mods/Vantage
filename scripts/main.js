@@ -132,6 +132,30 @@ Hooks.on("renderRegionConfig", (app, html) => {
   (part.querySelector(".scrollable") ?? part).append(fs);
 });
 
+// Wall Config: this wall's own height in the 3D view (empty = the scene's wall / door / low-wall height)
+Hooks.on("renderWallConfig", (app, html) => {
+  if (!game.user.isGM) return;
+  const root = rootOf(html) ?? app.element; if (!root) return;
+  if (root.querySelector(".vtg-wall")) return;
+  const doc = app.document;
+  const v = doc?.flags?.[MOD]?.height, cur = v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) || Number(v) <= 0 ? "" : Number(v);
+  const sc = doc?.parent, sw = Number(sc?.getFlag?.(MOD, "wallHeight"));
+  const isDoor = (doc?.door ?? 0) > 0 && doc.door !== CONST.WALL_DOOR_TYPES?.SECRET;
+  const dflt = isDoor ? game.settings.get(MOD, "doorHeight") : Number.isFinite(sw) && sw >= 4 ? sw : game.settings.get(MOD, "wallHeight");
+  const fs = document.createElement("fieldset");
+  fs.className = "vtg-wall";
+  fs.innerHTML = `<legend><i class="fa-solid fa-vr-cardboard"></i> ${L("Wall.Legend")}</legend>
+    <div class="form-group"><label>${L("Wall.Height")}</label>
+      <div class="form-fields"><input type="number" name="flags.${MOD}.height" step="0.5" min="0.5" max="200" value="${cur}" placeholder="${escA(L("Wall.Placeholder", {ft: dflt}))}"></div>
+      <p class="hint">${L("Wall.Hint")}</p>
+    </div>`;
+  const form = root.matches?.("form") ? root : root.querySelector("form") ?? root;
+  const footer = form.querySelector(":scope > footer, .form-footer");
+  const body = form.querySelector(":scope > .window-content, :scope > .standard-form") ?? form;
+  if (footer && footer.parentElement) footer.parentElement.insertBefore(fs, footer); else body.append(fs);
+  app.setPosition?.({height: "auto"});
+});
+
 // Scene Config > Basics: per-scene height map strength and dark-rock switch (empty = world setting)
 Hooks.on("renderSceneConfig", (app, html) => {
   if (!game.user.isGM) return;

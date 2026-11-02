@@ -426,6 +426,12 @@
       "shingles": "Wood shingles",
       "thatch": "Thatch",
       "corrugated": "Corrugated sheet"
+    },
+    "Wall": {
+      "Legend": "Vantage (3D view)",
+      "Height": "Wall height (ft)",
+      "Placeholder": "Scene default ({ft} ft)",
+      "Hint": "How tall this one wall (or door) stands in the 3D view. Overrides the scene's wall height for this wall only. Empty = the scene's height. Room ceilings still follow the scene's Wall height or a region's Ceiling height."
     }
   }
 }

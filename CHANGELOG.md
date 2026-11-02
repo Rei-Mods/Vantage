@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- **New:** each wall and door can have its own height in the 3D view (*Wall Config → Vantage → Wall height*). It overrides the scene's wall height (or door / low-wall height) for that one wall only; leave it empty to use the scene's. A wall with its own height keeps it instead of rising to meet a taller ceiling. Room ceilings still follow the scene's *Wall height* or a region's *Ceiling height*.
+
 ## 1.0.1
 
 - **Fixed:** Scene Config could not be saved (so scenes could not be renamed or changed) while the *Raise dark map areas* field was left on *Use the world setting*. The field sent an empty value as JSON, which Foundry could not read.
