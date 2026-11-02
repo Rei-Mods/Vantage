@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.3
+
+- **Fixed:** dark floors no longer fill up with rock. *Raise dark areas as rock* raised everything darker than the threshold, so night maps and dark sci-fi floors turned into walls of rock from floor to ceiling. Now only real "nothing here" areas rise:
+  - only **flat, untextured black** (out-of-bounds, cave rock); dark floors with grid lines, tiles, panels or dirt stay floor;
+  - **never under a token**, and never where a token can walk to without crossing a wall (dark ground behind walls still rises);
+  - without walls and tokens to go by, only dark areas at the map's edge rise, and if they would cover more than 35% of the map they are skipped as a dark floor (the GM gets a note). Setting the scene's own *Raise dark areas as rock* to **On** raises them anyway.
+- **Changed:** *Raise dark areas as rock* is now **off by default**. Worlds that never changed it get the new default; turn it on in the module settings or per scene in *Scene Config → Vantage*.
+
 ## 1.0.2
 
 - **New:** each wall and door can have its own height in the 3D view (*Wall Config → Vantage → Wall height*). It overrides the scene's wall height (or door / low-wall height) for that one wall only; leave it empty to use the scene's. A wall with its own height keeps it instead of rising to meet a taller ceiling. Room ceilings still follow the scene's *Wall height* or a region's *Ceiling height*.

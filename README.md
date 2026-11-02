@@ -40,7 +40,7 @@ It only draws while the camera moves (or something on the map animates), so it c
 - **Walls and doors rise up.** Sight-blocking walls become 12 ft walls (or the scene's own *Wall height*) in the [wall skin](#wall-skins-make-the-walls-fit-your-map) you pick, and closed doors become 10 ft doors. Secret doors look like plain wall. Open doors and see-through walls stay open, and windows, glass and foliage (limited sight) become low walls you can see over. Any single wall or door can have its own height (*Wall Config → Vantage → Wall height*), which overrides the scene's for that wall.
 - **Foundry v14 Levels.** Each level's art rises to its elevation. The view shows the token's level plus the levels it can see. A token standing under a higher floor sees the room it's in, not the inside of the floor above.
 - **Stairs.** Every Region with a *Change Level* behaviour becomes a staircase between its two floors, with glowing step edges. Ladders (very steep, short regions) stay flat.
-- **Rock.** Very dark parts of the map (cave walls, out-of-bounds) can become solid rock. You can turn this off per world or per scene.
+- **Rock (optional, off by default).** Plain black parts of the map (out-of-bounds, cave rock, pillars) can become solid rock. Dark floors stay floor: Vantage only raises flat, untextured black, never where a token stands or can walk to (judged by the walls), and skips it when it would cover much of the map. Turn it on per world or per scene.
 - **Ceilings and roofs.** Indoors, looking up shows a ceiling, not the sky; tall halls, sloped and peaked roofs, atriums open to an upper Level, and roofs seen from outside. See [Ceilings and roofs](#ceilings-and-roofs).
 - **Lights.** Scene lights glow on walls and floors. Darkness sources don't glow.
 - **Live updates.** Moving tokens, opening doors, or editing walls, lights, regions or levels updates the 3D view automatically.
@@ -283,7 +283,7 @@ The toolbar has **Eye** and **Overview** to switch camera, a dropdown to choose 
 | Crates, consoles, counters, a stage | A Region with *Vantage → Height* set (e.g. 3–4 ft). |
 | A pit, a pool, a sunken floor | A Region with a negative height. |
 | Hills, dunes, rubble, riverbanks | A `<map>_height` image next to the map art. |
-| A night map whose floor is very dark | Turn *Raise dark areas as rock* off (world, or per scene). |
+| Black out-of-bounds or cave rock that should stand up | Turn *Raise dark areas as rock* on (world, or per scene). It works best with the walls drawn and tokens on the map: dark ground behind walls rises, dark ground tokens can walk to stays floor. |
 | Walls that suit a fantasy, modern or wasteland map | A *Wall skin*: castle stone, brick, wood, concrete, scrap… (world, or per scene). |
 | A sunset, a night, a neon club, a torchlit dungeon | A *Lighting mood* in *Scene Config → Vantage*. Set *Sun direction* to match the map's painted shadows. |
 | A fey realm, a blood moon, an alien sky | *Fey twilight*, *Blood moon*, *Aurora night*… or a *Light colour* (purple, red, anything) on top of any mood. |
@@ -311,7 +311,7 @@ Save it next to the map with `_height` added to the name. Walls, doors, stairs a
 |---|---|---|
 | Wall height (ft) | 12 | How tall sight-blocking walls are. |
 | Door height (ft) | 10 | How tall closed doors are. |
-| Raise dark areas as rock | On | Very dark map areas become solid rock. |
+| Raise dark areas as rock | Off | Plain black map areas (out-of-bounds, cave rock) become solid rock. Dark floors (textured, under a token, or reachable by tokens through the walls) stay floor; if unconfirmed rock would cover over 35% of the map it is skipped, unless the scene sets it to On. |
 | Ceilings | Automatic | Rooms get a ceiling at wall height: Automatic (rooms closed in by walls, and maps named like interiors) / The whole map is indoors / Open sky. |
 | Roofs from outside | On | In a token's eye view, buildings show their roofs from above. Overviews and cutscenes always look in like a doll's house. |
 | Rock height (ft above the floor) | 35 | How tall that rock is. |
@@ -377,9 +377,9 @@ On slow laptops: set *3D view resolution* to **Fast**, keep *Lower resolution wh
 Your browser has hardware acceleration turned off, or doesn't support WebGL2. Turn on *Use hardware acceleration* in the browser settings and restart it. If the window reports that the graphics context was lost, close it and open it again.
 </details>
 
-<details><summary><b>Half the map turned into black rock</b></summary>
+<details><summary><b>Dark parts of the map turned into rock</b></summary>
 
-It's a night map with very dark floors. Turn off *Raise dark areas as rock*, either in the world settings or for just this scene in *Scene Config → Vantage*.
+*Raise dark areas as rock* is on (it's off by default since 1.0.3). On a night map with dark floors, turn it off in the world settings or for just this scene in *Scene Config → Vantage*. Drawing the walls and placing tokens also helps: dark ground a token stands on, or can walk to without crossing a wall, always stays floor. A lower *How dark counts as rock* raises less.
 </details>
 
 <details><summary><b>Figures look like they're tipping toward me</b></summary>

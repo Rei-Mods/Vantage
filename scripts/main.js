@@ -13,7 +13,7 @@ Hooks.once("init", () => {
   const choices = (key, list) => Object.fromEntries(Object.entries(list).map(([v, k]) => [v, `${S(key)}.Choices.${k}`]));
   reg("wallHeight", {type: Number, default: 12, range: {min: 4, max: 40, step: 1}});
   reg("doorHeight", {type: Number, default: 10, range: {min: 4, max: 30, step: 1}});
-  reg("raiseDark", {type: Boolean, default: true});
+  reg("raiseDark", {type: Boolean, default: false});
   reg("ceilings", {type: String, default: "auto", choices: choices("ceilings", {auto: "auto", all: "all", none: "none"}), onChange: () => PovWindow.instance?.rebuild()});
   reg("roofs", {type: Boolean, default: true, onChange: () => relook()});
   reg("rockHeight", {type: Number, default: 35, range: {min: 0, max: 120, step: 1}});

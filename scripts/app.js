@@ -42,10 +42,19 @@ export function sendSnapshot(dataUrl, title, to = null) {
 async function prepareView(view, scene, viewLevel, {playerView = false, maxBottom = null} = {}) {
   view.opts = {...viewOptions(scene), showHidden: !playerView};
   await view.load(sceneData(scene, viewLevel), {...buildOptions(scene), maxBottom});
+  darkRockNotice(scene, view.world);
   await view.setTokens(tokensOf(scene, {playerView}));
   view.setLights(lightsOf(scene));
   view.setTemplates(templatesOf(scene, {playerView}));
   if (playerView) applyVision(view, scene);
+}
+/** tell the GM (once per scene and session) when dark areas were not raised because they would cover too much of the map */
+const darkNoticed = new Set();
+function darkRockNotice(scene, world) {
+  const d = world?.darkRock;
+  if (!game.user.isGM || !d?.skipped || darkNoticed.has(scene.id)) return;
+  darkNoticed.add(scene.id);
+  ui.notifications.info(L("Notify.DarkSkipped", {scene: scene.name, pct: Math.round(d.unconfirmed * 100)}));
 }
 /** a player's 3D view shows only what their tokens see (and, dimmed, what they explored) */
 function applyVision(view, scene) {

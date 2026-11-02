@@ -59,7 +59,10 @@ export function sceneData(scene, viewLevel) {
   const NORMAL = CONST.WALL_SENSE_TYPES?.NORMAL ?? 20;
   const walls = scene.walls.contents.map(w => ({id: w.id, c: [...w.c], sight: w.sight, low: !!w.sight && w.sight !== NORMAL,
     door: w.door, ds: w.ds, levels: [...(w.levels ?? [])], h: wallHeightOf(w)}));
-  return {...r, levels, walls, regions: regionsOf(scene), viewLevel: viewLevel ?? scene.levels?.contents?.[0]?.id ?? "base"};
+  // token centres (scene-rect px): dark ground a token stands on, or can walk to, is floor, not rock
+  const gs = r.gridPx;
+  const tokens = scene.tokens.contents.map(t => ({x: t.x + t.width * gs / 2 - r.ox, y: t.y + t.height * gs / 2 - r.oy, level: t.level ?? null}));
+  return {...r, levels, walls, tokens, regions: regionsOf(scene), viewLevel: viewLevel ?? scene.levels?.contents?.[0]?.id ?? "base"};
 }
 
 /** stairs / ladders (regions with an active "Change Level" behaviour) and raised areas (regions with a Vantage height),
@@ -292,7 +295,9 @@ export function indoorsGuess(scene) {
 export function buildOptions(scene = null) {
   const wh = Number(sceneFlag(scene, "wallHeight"));   // this scene's own wall height (Scene Config), else the world's
   return {wallHeight: Number.isFinite(wh) && wh >= 4 ? Math.min(wh, 200) : setting("wallHeight"), doorHeight: setting("doorHeight"), rockHeight: setting("rockHeight"),
-    raiseDark: boolOr(sceneFlag(scene, "raiseDark"), setting("raiseDark")), darkThreshold: setting("darkThreshold"), heightMapMax: heightMaxOf(scene),
+    raiseDark: boolOr(sceneFlag(scene, "raiseDark"), setting("raiseDark")),
+    raiseDarkForced: boolOr(sceneFlag(scene, "raiseDark"), false),   // the scene itself says On: rock even if it covers much of the map
+    darkThreshold: setting("darkThreshold"), heightMapMax: heightMaxOf(scene),
     ceiling: sceneFlag(scene, "ceiling") ?? (() => { try { return setting("ceilings"); } catch (e) { return "auto"; } })(),
     indoors: indoorsGuess(scene)};
 }

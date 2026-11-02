@@ -1,6 +1,8 @@
 // Vantage - turns a scene (levels, walls, map art) into a heightfield + floor texture.
 // Pure functions over plain data so it can be tested outside Foundry; foundry.js feeds it.
 
+import {flatDarkMask, keepRock} from "./darkrock.js";
+
 export const KIND = {floor: 0, rock: 1, wall: 2, door: 3, stairs: 4, prop: 5, terrain: 6};
 /** what a raised area can look like from the side (Region Config > Vantage > Looks like), in shader order (0 = plain) */
 export const PROP_LOOKS = ["plain", "stretch", "arcade", "vending", "server", "bookshelf", "crate", "container", "console", "bar", "counter",
@@ -93,13 +95,14 @@ function hashNoise(seed = 3) {
  *   levels: [{id, bottom, src, color, visibility:[ids]}]   (bottom in ft)
  *   viewLevel: id
  *   walls: [{c:[x1,y1,x2,y2] canvas px, sight, door, ds, levels:[ids]}]
+ *   tokens: [{x, y (scene-rect px centre), level}]   (optional: dark areas under tokens stay floor)
  * }
- * opts: {wallHeight, doorHeight, lowWallHeight, rockHeight, raiseDark, darkThreshold, maxTex, floorMax, heightMax,
+ * opts: {wallHeight, doorHeight, lowWallHeight, rockHeight, raiseDark, raiseDarkForced, darkThreshold, maxTex, floorMax, heightMax,
  *        maxBottom}  maxBottom (ft): leave out levels whose bottom is above it ("ceiling" build for a token
  *        standing under a higher floor - a heightfield can't draw ceilings, so they'd bury the camera)
  */
 export async function buildWorld(data, opts = {}) {
-  const o = Object.assign({wallHeight: 12, doorHeight: 10, lowWallHeight: 4, rockHeight: 35, maxBottom: null, raiseDark: true, darkThreshold: 26, floorMax: 4096, heightMax: 2048, heightMapMax: 0}, opts);
+  const o = Object.assign({wallHeight: 12, doorHeight: 10, lowWallHeight: 4, rockHeight: 35, maxBottom: null, raiseDark: false, raiseDarkForced: false, darkThreshold: 26, floorMax: 4096, heightMax: 2048, heightMapMax: 0}, opts);
   const {W, H, ppf} = data;
   const maxTex = Math.min(o.maxTex ?? 8192, 8192);
   const fs = Math.min(1, Math.min(o.floorMax, maxTex) / Math.max(W, H));
@@ -188,22 +191,27 @@ export async function buildWorld(data, opts = {}) {
   }
   const levelHeight = heightFt.slice();
 
-  // ---- dark areas -> solid rock (pillars, cave walls, out-of-bounds black)
+  // ---- dark areas -> solid rock (pillars, cave walls, out-of-bounds black): only flat black that isn't floor (darkrock.js)
+  let darkRock = null;   // what happened: {frac, skipped, unconfirmed, kept, dropped}
   if (o.raiseDark) {
     const [mc, mctx] = canvas2d(hw, hh);
     mctx.drawImage(floor, 0, 0, hw, hh);
     const src = mctx.getImageData(0, 0, hw, hh), sp = src.data;
-    const thr = o.darkThreshold;
+    const thr = o.darkThreshold, pf = ppf * hs;
     const blurPx = Math.max(1, 6 * hs);
     // blur the colour first (like the preview's 6 px blur), then threshold
     const [bc, bctx] = canvas2d(hw, hh);
     bctx.filter = `blur(${blurPx}px)`; bctx.drawImage(mc, 0, 0);
     const bp = bctx.getImageData(0, 0, hw, hh).data;
-    const mask = mctx.createImageData(hw, hh), mp = mask.data;
+    const lum = new Float32Array(hw * hh), blum = new Float32Array(hw * hh);
     for (let k = 0, j = 0; k < hw * hh; k++, j += 4) {
-      const l = 0.299 * bp[j] + 0.587 * bp[j + 1] + 0.114 * bp[j + 2];
-      const v = l < thr ? 255 : 0; mp[j] = mp[j + 1] = mp[j + 2] = v; mp[j + 3] = 255;
+      lum[k] = 0.299 * sp[j] + 0.587 * sp[j + 1] + 0.114 * sp[j + 2];
+      blum[k] = 0.299 * bp[j] + 0.587 * bp[j + 1] + 0.114 * bp[j + 2];
     }
+    // dark AND flat (empty space has no texture; dark floors do)
+    const fm = flatDarkMask(lum, blum, hw, hh, {thr, pxPerFt: pf});
+    const mask = mctx.createImageData(hw, hh), mp = mask.data;
+    for (let k = 0, j = 0; k < hw * hh; k++, j += 4) { const v = fm[k]; mp[j] = mp[j + 1] = mp[j + 2] = v; mp[j + 3] = 255; }
     mctx.putImageData(mask, 0, 0);
     // opening: drop anything thinner than ~1 ft (blur + high threshold, then blur + low threshold)
     const open = Math.max(1, 0.55 * ppf * hs);
@@ -214,6 +222,33 @@ export async function buildWorld(data, opts = {}) {
       mctx.putImageData(q, 0, 0);
     };
     step(open, 200); step(open, 55);
+    // which patches are rock: not under a token, not floor the tokens can walk to, not most of the map
+    const op = mctx.getImageData(0, 0, hw, hh).data, om = new Uint8Array(hw * hh);
+    for (let k = 0; k < hw * hh; k++) om[k] = op[k * 4];
+    const setIds0 = new Set(set.map(l => l.id));
+    const onSet = ids => !ids?.length || ids.some(id => setIds0.has(id));
+    let walls = null;
+    for (const wl of data.walls ?? []) {
+      if (!wl.sight || (wl.door ?? 0) > 0 || !onSet(wl.levels)) continue;   // doors: tokens walk through them
+      walls ??= new Uint8Array(hw * hh);
+      const [x1, y1, x2, y2] = wl.c.map((v, i) => (v - (i % 2 ? data.oy : data.ox)) * hs);
+      const steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 0.5));
+      for (let s2 = 0; s2 <= steps; s2++) {
+        const cx = Math.round(x1 + (x2 - x1) * s2 / steps), cy = Math.round(y1 + (y2 - y1) * s2 / steps);
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const xi = cx + dx, yi = cy + dy;
+          if (xi >= 0 && yi >= 0 && xi < hw && yi < hh) walls[yi * hw + xi] = 1;
+        }
+      }
+    }
+    const tokens = (data.tokens ?? []).filter(t => !t.level || setIds0.has(t.level))
+      .map(t => { const x = Math.round(t.x * hs), y = Math.round(t.y * hs); return x >= 0 && y >= 0 && x < hw && y < hh ? y * hw + x : -1; })
+      .filter(k => k >= 0);
+    const res = keepRock(om, blum, hw, hh, {thr, pxPerFt: pf, walls, tokens, force: !!o.raiseDarkForced});
+    darkRock = {frac: res.frac, skipped: res.skipped, unconfirmed: res.unconfirmed, kept: res.kept, dropped: res.dropped};
+    const fin = mctx.createImageData(hw, hh), fp = fin.data;
+    for (let k = 0, j = 0; k < hw * hh; k++, j += 4) { const v = res.mask[k]; fp[j] = fp[j + 1] = fp[j + 2] = v; fp[j + 3] = 255; }
+    mctx.putImageData(fin, 0, 0);
     // rounded tops: a wider blur of the final mask gives a 0..1 "depth inside the rock"
     const rp = mctx.getImageData(0, 0, hw, hh).data;
     bctx.clearRect(0, 0, hw, hh); bctx.filter = `blur(${Math.max(1, 3.2 * ppf * hs)}px)`; bctx.drawImage(mc, 0, 0); bctx.filter = "none";
@@ -722,7 +757,7 @@ export async function buildWorld(data, opts = {}) {
     looksUsed: [...new Set(propRegions.map(p => p.look).filter(l => l > 0))], hasSlabs, meanCol, maxBottom: Number.isFinite(o.maxBottom) ? o.maxBottom : null, maxH, minH, baseElev, viewLevel: view?.id,
     viewElev: view?.bottom ?? baseElev,   // the floor of the level being viewed (ft): what an overview looks at
     floorLayers, hasVideo: floorLayers.some(l => isVideo(l.media)), maxTex: opts.maxTex,
-    levelIds: new Set(set.map(l => l.id))};
+    levelIds: new Set(set.map(l => l.id)), darkRock};
 }
 
 /** box blur (two passes = a soft tent) of a float grid, radius r texels */
